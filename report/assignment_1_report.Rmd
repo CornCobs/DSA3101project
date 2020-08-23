@@ -1,0 +1,166 @@
+---
+title: "Group Assignment 1 Report"
+author: "Group 2: Cai Anqi, Chan Yu Hang, Chin Synn Khee Joash, Chua Cheng Ling, Chua Hua Ren, Clarence Ong"
+output: html_document
+---
+
+```{r message=F, warning=F, echo=F}
+library(tidyverse)
+library(readxl)
+library(knitr)
+
+cat_info <- read_csv("../data/DSA3101_Hackathon_Categories_Information.csv")
+data <- read_csv("../data/DSA3101_Hackathon_Data.csv")
+panel_demo <- read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
+
+# preprocessing code
+# df <- data %>% left_join(cat_info, by="Category") %>% 
+#   left_join(panel_demo, by=c("Panel ID" = "ID")) %>% 
+#   mutate(Race=case_when(str_detect(Ethnicity, "Malay")~"Malay",
+#                              str_detect(Ethnicity, "Chinese")~"Chinese",
+#                              str_detect(Ethnicity, "Others")~"Others"),
+#        Income=case_when(Income=="Income < 1500" ~ "[0, 1500)",
+#                         Income=="Income >5000" ~ "[5000, )",
+#                         Income=="Income 1500 - 1999" ~ "[1500, 2000)",
+#                         Income=="Income 2000 - 2999" ~ "[2000, 3000)",
+#                         Income=="Income 3000 - 3999" ~ "[3000, 4000)",
+#                         Income=="Income 4000 - 4999" ~ "[4000, 5000)"),
+#        SES=case_when(as.numeric(str_sub(Income, 2, 2)) < 3 ~ "Low",
+#                      as.numeric(str_sub(Income, 2, 2)) > 4 ~ "High",
+#                      TRUE ~ "Medium"))
+```
+
+## 1. Introduction
+This report documents our analysis of consumers' spending habits over the last 3 years in Malaysia.
+We are provided with 3 datasets, namely `DSA3101_Hackathon_Categories_Information.csv`,
+`DSA3101_Hackathon_Data.csv` and `DSA3101_Hackathon_Panelists_Demographics.csv`.
+
+## 2. Exploratory Data Analysis (EDA)
+### 2.1. Preview of each dataset
+#### `DSA3101_Hackathon_Categories_Information.csv` - 62 rows, 3 columns
+The first 6 rows is as follows:
+```{r echo=F}
+cat_info %>% head() %>% kable()
+# cat(unique(cat_info$Category), sep=", ")
+```
+The 62 categories are Baby Cereal, Beer, Belacan, Bird Nest, Biscuits, Bouilon, Butter, Cake, Canned Product, Cereal Beverage, Cereals, Cheese, Chicken Essence, Choc/Nut Spread, Chocolate, Coconut Milk, Coffee, Condensed/Evap Milk, Confectionery, Cooking Oils, Cooking Sauces, Cordials, Creamer, CSD, Cultured Milk, Drinking Water, Eggs, Energy Drinks, Flour, Frozen Food, Fruit/Veg Juices, Ghee, Honey, Ice Cream, Instant Noodles, Instant Soup, Isotonic Drinks, Jam, Kaya, Liquid Milk, Margarine, Milk Powder-Adult, Milk Powder-Infant, Milk Powder-Kids, MSG, Peanut Butter, Rice, RTD Coffee, RTD Tea, Salad Dressing, Savoury Spread, Seasoning Powder, Snack, Soy Milk, Spagetti, Spirits, Sugar, Tea, Tonic Food Drink, Wine, Yoghurt Drink, Yoghurts.
+
+The summary statistics is shown below:
+```{r echo=F}
+select_if(cat_info, is.numeric) %>% summary() %>% kable()
+```
+Cross-referencing with other sources, we found that the zero calories (MSG and Drinking Water) is indeed true.
+
+-------------------
+
+#### `DSA3101_Hackathon_Data.csv` - 1318024 rows, 6 columns
+The first 6 rows is as follows:
+```{r echo=F}
+data %>% head() %>% kable()
+```
+This dataset consists of 156 Sundays (3 full years) which spans from 2017-06-25 to 2020-06-14.
+
+The summary statistics is shown below:
+```{r echo=F}
+select_if(data, is.numeric) %>% summary() %>% kable()
+```
+There are entries with value zero in the 3 numerical columns. 
+It could possibly be due to rounding errors (as the values are rounded to nearest 1 decimal place) or
+simply a mistake in recording.
+
+-------------------
+
+#### `DSA3101_Hackathon_Panelists_Demographics.csv` - 4026 rows, 8 columns
+The first 6 rows is as follows:
+```{r echo=F, message=F}
+panel_demo %>% head() %>% kable()
+```
+
+```{r echo=F, message=F}
+lapply(colnames(panel_demo)[2:8], function(x){table(panel_demo[[x]])}) %>% 
+  kable(col.names=c("", "Freq"))
+```
+
+### 2.2. Background Information 
+```{r echo=F, message=F}
+panel_demo %>% 
+  mutate(Ethnicity=case_when(str_detect(Ethnicity, "Malay")~"Malay",
+                             str_detect(Ethnicity, "Chinese")~"Chinese",
+                             str_detect(Ethnicity, "Others")~"Others")) %>% 
+  group_by(Ethnicity) %>% summarise(n=n()) %>% mutate(proportion=n/sum(n)) %>%
+  kable()
+```
+We identified that the country of origin for this dataset is Malaysia due to the ethnic group composition.
+Malaysian citizens consist of the ethnic groups Bumiputera (67.4%), Chinese (24.6%), Indians (7.3%) and Others (0.7%).
+
+```{r echo=F, message=F}
+panel_demo %>% 
+  mutate(Ethnicity=case_when(str_detect(Ethnicity, "Malay")~"Malay",
+                             str_detect(Ethnicity, "Chinese")~"Chinese",
+                             str_detect(Ethnicity, "Others")~"Others"),
+       Income=case_when(Income=="Income < 1500" ~ "[0, 1500)",
+                        Income=="Income >5000" ~ "[5000, )",
+                        Income=="Income 1500 - 1999" ~ "[1500, 2000)",
+                        Income=="Income 2000 - 2999" ~ "[2000, 3000)",
+                        Income=="Income 3000 - 3999" ~ "[3000, 4000)",
+                        Income=="Income 4000 - 4999" ~ "[4000, 5000)")) %>% 
+  group_by(Ethnicity, Income) %>% summarise(n=n()) %>% 
+  mutate(n=n/sum(n)) %>%
+  pivot_wider(names_from=Income, values_from=n) %>% kable()
+```
+
+```{r echo=F, message=F}
+panel_demo %>%
+  mutate(Income=case_when(Income=="Income < 1500" ~ "[0, 1500)",
+                          Income=="Income >5000" ~ "[5000, )",
+                          Income=="Income 1500 - 1999" ~ "[1500, 2000)",
+                          Income=="Income 2000 - 2999" ~ "[2000, 3000)",
+                          Income=="Income 3000 - 3999" ~ "[3000, 4000)",
+                          Income=="Income 4000 - 4999" ~ "[4000, 5000)")) %>% 
+  group_by(location, Income) %>% summarise(n=n()) %>%
+  mutate(n=n/sum(n)) %>%
+  pivot_wider(names_from=Income, values_from=n) %>% kable()
+```
+It is of no surprise that Central (Capital of Malaysia - Kuala Lumpur) and South (Closer to Singapore) regions are generally more wealthy than North and East Coast.
+
+```{r echo=F, message=F, fig.width=12}
+data %>% 
+  filter(Category %in% 
+           c("Rice", "Canned Product", "Biscuits", "Flour", "Frozen Food",
+             "Sugar", "Instant Noodles")) %>%
+  group_by(Date, Category) %>% summarise(n=n()) %>% ggplot() +
+  geom_line(aes(x=Date, y=n, color=Category)) + 
+  geom_vline(xintercept=as.Date("2020-03-22"), colour="black", linetype="dotted") +
+  theme(legend.position = "bottom") + ylab("Number of Transactions")
+```
+Malaysia announced their Movement Control Order (MCO) on 2020-03-18 (Wednesday).
+Essential goods like rice, frozen food spiked in the number of transactions for that week.
+
+-------------------
+
+## 3. Preprocessing
+
+-------------------
+
+## 4. Analysis
+
+### 4.1. RFM Modelling
+Assumptions:
+
+- Weekly data represents the purchases a customer has made in that particular week.
+Since there is no data on receipts, we shall treat this as a single visit for computing frequency score.
+- Example: Customer A who has made 10 transactions 4 weeks ago is not as frequent as 
+Customer B who has made 1 transaction each consistently for 4 weeks.
+- Approach: We group by the Panel ID and Date first to compile the transactions in 1 single receipt 
+for that week. Then we group by Panel ID to apply RFM. The monetary is computed based on mean expenditure
+rather than the total sum to as the total sum is easily influenced by the frequency of the visits
+(collinearity issues)
+
+-------------------
+
+### 4.2. Market Basket Analysis
+
+-------------------
+
+## 5. Conclusion
+
