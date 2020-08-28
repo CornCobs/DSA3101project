@@ -8,10 +8,19 @@ output: html_document
 library(tidyverse)
 library(readxl)
 library(knitr)
+library(lubridate)
 
 cat_info <- read_csv("../data/DSA3101_Hackathon_Categories_Information.csv")
 data <- read_csv("../data/DSA3101_Hackathon_Data.csv")
 panel_demo <- read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
+
+panel_demo <- panel_demo %>% 
+  mutate(Income=case_when(Income=="Income < 1500" ~ "[0, 1500)",
+                        Income=="Income >5000" ~ "[5000, )",
+                        Income=="Income 1500 - 1999" ~ "[1500, 2000)",
+                        Income=="Income 2000 - 2999" ~ "[2000, 3000)",
+                        Income=="Income 3000 - 3999" ~ "[3000, 4000)",
+                        Income=="Income 4000 - 4999" ~ "[4000, 5000)"))
 
 # preprocessing code
 # df <- data %>% left_join(cat_info, by="Category") %>% 
@@ -31,7 +40,8 @@ panel_demo <- read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx"
 ```
 
 ## 1. Introduction
-This report documents our analysis of consumers' spending habits over the last 3 years in Malaysia.
+In this report, we aim to exploit both RFM modeling and MBA, using transaction data collected over the past 3 years, to help guide the company to make strategic business decisions to improve profitability.
+
 We are provided with 3 datasets, namely `DSA3101_Hackathon_Categories_Information.csv`,
 `DSA3101_Hackathon_Data.csv` and `DSA3101_Hackathon_Panelists_Demographics.csv`.
 
@@ -123,7 +133,7 @@ panel_demo %>%
 ```
 It is of no surprise that Central (Capital of Malaysia - Kuala Lumpur) and South (Closer to Singapore) regions are generally more wealthy than North and East Coast.
 
-```{r echo=F, message=F, fig.width=12}
+```{r echo=F, message=F, fig.width=10}
 data %>% 
   filter(Category %in% 
            c("Rice", "Canned Product", "Biscuits", "Flour", "Frozen Food",
@@ -136,15 +146,43 @@ data %>%
 Malaysia announced their Movement Control Order (MCO) on 2020-03-18 (Wednesday).
 Essential goods like rice, frozen food spiked in the number of transactions for that week.
 
+```{r echo=F, message=F, eval=F}
+# data %>% group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
+#   group_by(`Panel ID`) %>% summarise(`Average Spending`=mean(Total)) %>% 
+#   left_join(panel_demo, by = c("Panel ID" = "ID")) %>% 
+#   ggplot() + 
+#   # geom_area(aes(x=`Average Spending`, fill=Income), stat ="bin", alpha=0.5) + 
+#   # theme_classic() + xlim(0, 300)
+#   geom_boxplot(aes(x=Income, y=`Average Spending`)) + coord_flip()
+# 
+# data %>% group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
+#   group_by(`Panel ID`) %>% 
+#   summarise(`Average Spending`=mean(Total), Sum=sum(Total), n=length(Total)) %>% 
+#   left_join(panel_demo, by = c("Panel ID" = "ID")) -> tmp
+#   filter(Income == "[5000, )") %>% 
+#   mutate(cutoff = quantile(`Average Spending`, 0.75) + 1.5*IQR(`Average Spending`)) %>% 
+#   filter(`Average Spending` <= cutoff) %>% ggplot() + 
+#   geom_boxplot(aes(Income, `Average Spending`))
+```
+
 -------------------
 
 ## 3. Preprocessing
+
+The erroneous data takes up about 3.8% of the entire dataset. 
+We have decided to drop these rows. 
+However, we do acknowledge that it is possible to impute the values by comparing to other similar rows.
+```{r echo=F}
+# filter(data, (`Pack Size` == 0) | (Volume == 0) | (Spend == 0)) %>% dim()
+data <- filter(data, `Pack Size` != 0, Volume != 0, Spend != 0)
+
+```
 
 -------------------
 
 ## 4. Analysis
 
-### 4.1. RFM Modelling
+### 4.1. RFM Modelling over Time
 Assumptions:
 
 - Weekly data represents the purchases a customer has made in that particular week.
@@ -156,6 +194,155 @@ for that week. Then we group by Panel ID to apply RFM. The monetary is computed 
 rather than the total sum to as the total sum is easily influenced by the frequency of the visits
 (collinearity issues)
 
+Due to the largely skewed dataset, we will not be performing quantile cuts.
+Instead, we will be doing manual segmentation as it is more robust and the results are more interpretable.
+
+- Recency
+  - 3: Last visit was <= 1 week ago
+  - 2: Last visit was  <= 2 weeks ago
+  - 1: Last visit was > 2 weeks ago
+- Frequency
+  - 3: >= 9 visits in 12 weeks
+  - 2: < 9 visits in 12 weeks (average twice every three weeks)
+  - 1: < 6 visits in 12 weeks (average fortnightly visits)
+- Monetary
+  - 3: >= RM60 mean spending in a week
+  - 2: < RM60 mean spending in a week
+  - 1: < RM30 mean spending in a week
+
+```{r echo=F, message=F, fig.width=10, fig.height=8}
+maxDate <- max(data$Date)
+mcoDate <- ymd("2020-03-18")
+mcoPrevSunDate <- ymd("2020-03-15")
+minDate <- min(data$Date)
+
+postMCO_weeks <- as.numeric(difftime(maxDate, mcoPrevSunDate, units="weeks"))
+
+threeMonths <- data.frame()
+for (i in 1:12){
+  x <- data %>% 
+    filter((Date < mcoDate - postMCO_weeks*7*(11-i)) & 
+             (Date > mcoDate - postMCO_weeks*7*(12-i))) %>%
+    group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
+    group_by(`Panel ID`) %>% 
+    summarise(Recency = as.numeric(mcoPrevSunDate - postMCO_weeks*7*(11-i) - max(Date))/7,    # convert to in terms of weeks
+              Frequency = n(),    
+              Monetary = mean(Total)) %>% 
+    mutate(Recency = case_when(Recency == 0 ~ 3,    # difference of weeks starts from 1
+                               Recency == 1 ~ 2,
+                               TRUE ~ 1),
+           Frequency = case_when(Frequency < 6 ~ 1,    # rarer than fortnightly visits
+                               Frequency < 9 ~ 2,    # 2-3 average weekly visits per month
+                               TRUE ~ 3),    # 3-4 average weekly visits per month
+           Monetary = case_when(Monetary < 40 ~ 1,    # less than RM40/month
+                               Monetary < 60 ~ 2,    # less than RM60/month
+                               TRUE ~ 3),    # >= RM60/month
+           RFM = str_c(Recency, Frequency, Monetary), Window=i)
+  threeMonths <- rbind(threeMonths, x)
+}
+
+threeMonths1 <- threeMonths %>% group_by(Window, RFM) %>% summarise(n=n()) %>% group_by(Window) %>% 
+  summarise(RFM=RFM, Proportion=n/sum(n)) %>% filter((Proportion < 0.1) & (str_sub(RFM, 3) != "3"))
+threeMonths2 <- threeMonths %>% group_by(Window, RFM) %>% summarise(n=n()) %>% group_by(Window) %>% 
+  summarise(RFM=RFM, Proportion=n/sum(n)) %>% filter((Proportion > 0.1))
+threeMonths3 <- threeMonths %>% group_by(Window, RFM) %>% summarise(n=n()) %>% group_by(Window) %>% 
+  summarise(RFM=RFM, Proportion=n/sum(n)) %>% filter((Proportion < 0.1) & (str_sub(RFM, 3) == "3"))
+ggplot() + geom_line(aes(x=Window, y=Proportion, group=RFM), data=threeMonths1, alpha=0.3) +
+  geom_line(aes(x=Window, y=Proportion, color=RFM), data=threeMonths2, size=1.1) + 
+  geom_line(aes(x=Window, y=Proportion, group=RFM), color="purple", data=threeMonths3) +
+  scale_x_continuous(breaks=seq(1,12)) +
+  theme(legend.position = "bottom")
+
+```
+In general, there are no big changes in terms of the proportion of the RFM for in each window (13 weeks period). 
+The bulk of the customers (~50%) are loyal patrons who visit frequently (score 3) and recently (score 3). 
+The coronavirus occured some time in between window 10 and 11 while 
+the MCO happened just before window 12. 
+It is obvious that many customers are spending more during the pandemic as seen from the spike in `RFM = 333` (blue line) and the other `M = 3` (purple lines).
+
+```{r echo=F, message=F}
+preMCO <- data %>% filter((Date < mcoDate) & (Date > mcoDate - postMCO_weeks*7)) %>%
+  group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
+  group_by(`Panel ID`) %>% 
+  summarise(Recency = as.numeric(mcoPrevSunDate - max(Date))/7,    # convert to in terms of weeks
+            Frequency = n(),    
+            Monetary = mean(Total)) %>% 
+  mutate(Recency = case_when(Recency == 0 ~ 3,    # difference of weeks starts from 1
+                             Recency == 1 ~ 2,
+                             TRUE ~ 1),
+         Frequency = case_when(Frequency < 6 ~ 1,    # rarer than fortnightly visits
+                             Frequency < 9 ~ 2,    # 2-3 average weekly visits per month
+                             TRUE ~ 3),    # 3-4 average weekly visits per month
+         Monetary = case_when(Monetary < 40 ~ 1,    # less than RM40/month
+                             Monetary < 60 ~ 2,    # less than RM60/month
+                             TRUE ~ 3),    # >= RM60/month
+         event = "pre", RFM = str_c(Recency, Frequency, Monetary)) %>% 
+  left_join(panel_demo, by=c("Panel ID"="ID"))
+
+postMCO <- data %>% filter(Date > mcoDate) %>%
+  group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
+  group_by(`Panel ID`) %>% 
+  summarise(Recency = as.numeric(maxDate - max(Date))/7,    # convert to in terms of weeks
+            Frequency = n(),    
+            Monetary = mean(Total)) %>% 
+  mutate(Recency = case_when(Recency == 0 ~ 3,    # difference of weeks starts from 0
+                             Recency == 1 ~ 2,
+                             TRUE ~ 1),
+         Frequency = case_when(Frequency < 6 ~ 1,    # rarer than fortnightly visits
+                             Frequency < 9 ~ 2,    # 2-3 average weekly visits per month
+                             TRUE ~ 3),    # 3-4 average weekly visits per month
+         Monetary = case_when(Monetary < 40 ~ 1,    # less than RM40/month
+                             Monetary < 60 ~ 2,    # less than RM60/month
+                             TRUE ~ 3),    # >= RM60/month
+         event = "post", RFM = str_c(Recency, Frequency, Monetary)) %>% 
+  left_join(panel_demo, by=c("Panel ID"="ID"))
+```
+
+#### How many customers have we lost?
+```{r echo=F, message=F}
+lost <- setdiff(preMCO$`Panel ID`, postMCO$`Panel ID`)
+lost %>% length() %>% kable()
+panel_demo %>% filter(ID %in% lost) %>% group_by(Income) %>% summarise(n=n()) %>% kable()
+preMCO %>% filter(`Panel ID` %in% lost) %>% group_by(RFM) %>% summarise(n=n()) %>% kable()
+```
+
+#### Which customers have we gained?
+```{r echo=F, message=F}
+gained <- setdiff(postMCO$`Panel ID`, preMCO$`Panel ID`)
+postMCO %>% filter(`Panel ID` %in% gained) %>% kable()
+```
+
+#### Out of all the existing customers who stayed, what is the relative movement of Recency?
+```{r echo=F, message=F}
+stayed <- intersect(postMCO$`Panel ID`, preMCO$`Panel ID`)
+r <- rbind(preMCO, postMCO) %>% filter(`Panel ID` %in% stayed)
+r %>% group_by(`Panel ID`) %>% 
+  summarise(ChangeR=last(Recency)-first(Recency)) %>% 
+  left_join(panel_demo, by=c("Panel ID"="ID")) %>% 
+  group_by(ChangeR, Income) %>% summarise(n=n()) %>% 
+  mutate(n=n/sum(n)) %>% ggplot() + geom_tile(aes(x=Income, y=ChangeR, fill=n)) + scale_fill_fermenter()
+# pivot_wider(names_from=Income, values_from=n) %>% kable()
+```
+
+#### Out of all the existing customers who stayed, what is the relative movement of Frequency?
+```{r echo=F, message=F}
+r %>% group_by(`Panel ID`) %>% 
+  summarise(ChangeF=last(Frequency)-first(Frequency)) %>% 
+  left_join(panel_demo, by=c("Panel ID"="ID")) %>% 
+  group_by(ChangeF, Income) %>% summarise(n=n()) %>% 
+  mutate(n=n/sum(n)) %>% ggplot() + geom_tile(aes(x=Income, y=ChangeF, fill=n))
+# pivot_wider(names_from=Income, values_from=n) %>% kable()
+```
+
+#### Out of all the existing customers who stayed, what is the relative movement of Monetary?
+```{r echo=F, message=F}
+r %>% group_by(`Panel ID`) %>% 
+  summarise(ChangeM=last(Monetary)-first(Monetary)) %>% 
+  left_join(panel_demo, by=c("Panel ID"="ID")) %>% 
+  group_by(ChangeM, Income) %>% summarise(n=n()) %>% 
+  mutate(n=n/sum(n)) %>% ggplot() + geom_tile(aes(x=Income, y=ChangeM, fill=n))
+# pivot_wider(names_from=Income, values_from=n) %>% kable()
+```
 -------------------
 
 ### 4.2. Market Basket Analysis
