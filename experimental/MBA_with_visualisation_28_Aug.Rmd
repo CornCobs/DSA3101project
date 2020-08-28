@@ -1,0 +1,388 @@
+---
+title: "DSA3101 Assignment 1 (Visualisation and MBA)"
+output: html_document
+---
+
+```{r, echo=FALSE, message=FALSE}
+#pacakges used
+library(tidyverse)
+library(gridExtra)
+library(readxl)
+```
+
+## Data Visualisation
+
+```{r, echo=FALSE}
+data <- read.csv("../cleaned_data/correct_data.csv")
+
+data$Panel.ID <- as.factor(data$Panel.ID)
+
+data <- data %>% 
+  group_by(Panel.ID) %>% 
+  mutate(id = 1:n()) %>% 
+  filter(id == "1")
+
+plot_1 <- ggplot(data = data) + geom_bar(mapping = aes(BMI)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_2 <- ggplot(data = data) + geom_bar(mapping = aes(Income)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_3 <- ggplot(data = data) + geom_bar(mapping = aes(Ethnicity)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_4 <- ggplot(data = data) + geom_bar(mapping = aes(Lifestage)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_5 <- ggplot(data = data) + geom_bar(mapping = aes(Strata)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_6 <- ggplot(data = data) + geom_bar(mapping = aes(X.HH)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_7 <- ggplot(data = data) + geom_bar(mapping = aes(location)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_8 <- ggplot(data = data) + geom_bar(mapping = aes(Race)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_9 <- ggplot(data = data) + geom_bar(mapping = aes(SES))+ theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+grid.arrange(plot_1, plot_2, plot_3, plot_4, ncol = 2) 
+
+grid.arrange(plot_5, plot_6, plot_7, plot_8, plot_9, ncol = 2)
+
+ggplot(data = data) + geom_bin2d(aes(x = Income, y = BMI)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+
+ggplot(data = data) + geom_bar(mapping = aes(Income, fill = BMI), position = "dodge") + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+ggplot(data = data) + geom_bar(mapping = aes(Income, fill = Race), position = "dodge") + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+ggplot(data = data) + geom_bar(mapping = aes(Income, fill = SES), position = "dodge") + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+ggplot(data = data) + geom_bar(mapping = aes(Income, fill = X.HH ), position = "dodge") + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+```
+
+## Studying the demographics of focused panelist group
+
+### Data exploration
+
+Our main focus is the group of panelists with high income (>5000) but low spend.
+First, the total spend of each panelist is calculated and combined into the demographics data frame.
+
+```{r pressure, echo=FALSE, warning=FALSE}
+transactions_data <- read.csv("../cleaned_data/correct_data.csv")
+demo <- read_xlsx("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
+
+total_spend <- transactions_data %>%
+  group_by(Panel.ID) %>%
+  summarise(Spend = sum(Spend)) #calculate total spend of each panelist
+
+demo_withSpend <- demo %>% 
+  left_join(total_spend, by = c("ID" = "Panel.ID")) %>%
+  drop_na() #combine the total spend into demographics dataframe
+
+#convert column values into factors for better understanding of the demographics
+demo_withSpend$BMI <- factor(demo_withSpend$BMI)
+demo_withSpend$location <- factor(demo_withSpend$location)
+demo_withSpend$Lifestage <- factor(demo_withSpend$Lifestage)
+demo_withSpend$Strata <- factor(demo_withSpend$Strata)
+demo_withSpend$Ethnicity <- factor(demo_withSpend$Ethnicity)
+demo_withSpend$`#HH` <- factor(demo_withSpend$`#HH`)
+
+summary(demo_withSpend)
+```
+
+Upon inspection of the data, the lowest spender is actually one with high income (>5000), with panel ID 138046101.
+
+Next, our target group (Income >5000) is filtered out. The low income group (<1500) is also filtered out for comparison.
+```{r}
+high_ses <- demo_withSpend %>%
+  filter(Income == "Income >5000") %>%
+  select(-Income)
+summary(high_ses)
+```
+
+```{r}
+low_ses <- demo_withSpend %>%
+  filter(Income == "Income < 1500") %>%
+  select(-Income)
+summary(low_ses)
+```
+
+We then filter out those whose spend is higher than 75 percentile of the entire panelist population and treat them as our high spenders. The low spenders, on the other hand, are those whose spend is lower than 25 percentile of the population.
+
+```{r}
+high_ses_low_spend <- high_ses %>%
+  filter(Spend < 1075.5)
+summary(high_ses_low_spend)
+```
+
+```{r, include=FALSE}
+#export the data
+high_ses_low_spend_ID <- high_ses_low_spend["ID"]
+
+colnames(high_ses_low_spend_ID) <- "Panel ID"
+
+write.table(high_ses_low_spend_ID,"../data/high_ses_low_spend_ID.csv", row.names = FALSE, col.names = TRUE, sep = ",")
+```
+
+```{r}
+high_ses_high_spend <- high_ses %>%
+  filter(Spend > 5643.3 )
+summary(high_ses_high_spend)
+```
+
+```{r, include=FALSE}
+#export the data
+high_ses_high_spend_ID <- high_ses_high_spend["ID"]
+
+colnames(high_ses_high_spend_ID) <- "Panel ID"
+
+write.table(high_ses_high_spend_ID,"../data/high_ses_high_spend_ID.csv", row.names = FALSE, col.names = TRUE, sep = ",")
+```
+
+```{r}
+low_ses_low_spend <- low_ses %>%
+  filter(Spend < 1075.5)
+summary(low_ses_low_spend)
+```
+
+```{r, include=FALSE}
+#export the data
+low_ses_low_spend_ID <- low_ses_low_spend["ID"]
+
+colnames(low_ses_low_spend_ID) <- "Panel ID"
+
+write.table(low_ses_low_spend_ID,"../data/low_ses_low_spend_ID.csv", row.names = FALSE, col.names = TRUE, sep = ",")
+```
+
+```{r}
+low_ses_high_spend <- low_ses %>%
+  filter(Spend > 5643.3 )
+summary(low_ses_high_spend)
+```
+
+```{r, include=FALSE}
+low_ses_high_spend_ID <- low_ses_high_spend["ID"]
+
+colnames(low_ses_high_spend_ID) <- "Panel ID"
+
+write.table(low_ses_high_spend_ID,"../data/low_ses_high_spend_ID.csv", row.names = FALSE, col.names = TRUE, sep = ",")
+```
+
+Some findings from the summary:
+
+* Most high-income panelists are from Central location, with almost equal proportions of Chinese and Malay at central location.
+
+* Higher proportion of urban residents in high-income panelists compared to the entire population.
+
+* Low income panelists are mostly from East Coast and North.
+
+### Visualisation of different groups
+
+```{r, echo=FALSE}
+data <- read.csv("../cleaned_data/correct_data.csv")
+
+data$Panel.ID <- as.factor(data$Panel.ID)
+
+data <- data %>% group_by(Panel.ID) %>% mutate(id = 1:n()) %>% filter(id == "1")
+
+data <- left_join(high_ses_low_spend_ID, data, by = c("Panel ID" = "Panel.ID"))
+
+plot_1 <- ggplot(data = data) + geom_bar(mapping = aes(BMI)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_2 <- ggplot(data = data) + geom_bar(mapping = aes(Income)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_3 <- ggplot(data = data) + geom_bar(mapping = aes(Ethnicity)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_4 <- ggplot(data = data) + geom_bar(mapping = aes(Lifestage)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_5 <- ggplot(data = data) + geom_bar(mapping = aes(Strata)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_6 <- ggplot(data = data) + geom_bar(mapping = aes(X.HH)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_7 <- ggplot(data = data) + geom_bar(mapping = aes(location)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_8 <- ggplot(data = data) + geom_bar(mapping = aes(Race)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_9 <- ggplot(data = data) + geom_bar(mapping = aes(SES))+ theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+grid.arrange(plot_1, plot_2, plot_3, plot_4, ncol = 2) 
+
+grid.arrange(plot_5, plot_6, plot_7, plot_8, plot_9, ncol = 2)
+```
+
+```{r, echo=FALSE}
+data <- read.csv("../cleaned_data/correct_data.csv")
+
+data$Panel.ID <- as.factor(data$Panel.ID)
+
+data <- data %>% group_by(Panel.ID) %>% mutate(id = 1:n()) %>% filter(id == "1")
+
+data <- left_join(high_ses_high_spend_ID, data, by = c("Panel ID" = "Panel.ID"))
+
+plot_1 <- ggplot(data = data) + geom_bar(mapping = aes(BMI)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_2 <- ggplot(data = data) + geom_bar(mapping = aes(Income)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_3 <- ggplot(data = data) + geom_bar(mapping = aes(Ethnicity)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_4 <- ggplot(data = data) + geom_bar(mapping = aes(Lifestage)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_5 <- ggplot(data = data) + geom_bar(mapping = aes(Strata)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_6 <- ggplot(data = data) + geom_bar(mapping = aes(X.HH)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_7 <- ggplot(data = data) + geom_bar(mapping = aes(location)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_8 <- ggplot(data = data) + geom_bar(mapping = aes(Race)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_9 <- ggplot(data = data) + geom_bar(mapping = aes(SES))+ theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+grid.arrange(plot_1, plot_2, plot_3, plot_4, ncol = 2) 
+
+grid.arrange(plot_5, plot_6, plot_7, plot_8, plot_9, ncol = 2)
+```
+
+```{r, echo=FALSE}
+data <- read.csv("../cleaned_data/correct_data.csv")
+
+data$Panel.ID <- as.factor(data$Panel.ID)
+
+data <- data %>% group_by(Panel.ID) %>% mutate(id = 1:n()) %>% filter(id == "1")
+
+data <- left_join(low_ses_low_spend_ID, data, by = c("Panel ID" = "Panel.ID"))
+
+plot_1 <- ggplot(data = data) + geom_bar(mapping = aes(BMI)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_2 <- ggplot(data = data) + geom_bar(mapping = aes(Income)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_3 <- ggplot(data = data) + geom_bar(mapping = aes(Ethnicity)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_4 <- ggplot(data = data) + geom_bar(mapping = aes(Lifestage)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_5 <- ggplot(data = data) + geom_bar(mapping = aes(Strata)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_6 <- ggplot(data = data) + geom_bar(mapping = aes(X.HH)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_7 <- ggplot(data = data) + geom_bar(mapping = aes(location)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_8 <- ggplot(data = data) + geom_bar(mapping = aes(Race)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_9 <- ggplot(data = data) + geom_bar(mapping = aes(SES))+ theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+grid.arrange(plot_1, plot_2, plot_3, plot_4, ncol = 2) 
+
+grid.arrange(plot_5, plot_6, plot_7, plot_8, plot_9, ncol = 2)
+```
+
+```{r, echo=FALSE}
+data <- read.csv("../cleaned_data/correct_data.csv")
+
+data$Panel.ID <- as.factor(data$Panel.ID)
+
+data <- data %>% group_by(Panel.ID) %>% mutate(id = 1:n()) %>% filter(id == "1")
+
+data <- left_join(low_ses_high_spend_ID, data, by = c("Panel ID" = "Panel.ID"))
+
+plot_1 <- ggplot(data = data) + geom_bar(mapping = aes(BMI)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_2 <- ggplot(data = data) + geom_bar(mapping = aes(Income)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_3 <- ggplot(data = data) + geom_bar(mapping = aes(Ethnicity)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_4 <- ggplot(data = data) + geom_bar(mapping = aes(Lifestage)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_5 <- ggplot(data = data) + geom_bar(mapping = aes(Strata)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_6 <- ggplot(data = data) + geom_bar(mapping = aes(X.HH)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_7 <- ggplot(data = data) + geom_bar(mapping = aes(location)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_8 <- ggplot(data = data) + geom_bar(mapping = aes(Race)) + theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+plot_9 <- ggplot(data = data) + geom_bar(mapping = aes(SES))+ theme(axis.text.x=element_text(angle=90, vjust=0, hjust=1))
+
+grid.arrange(plot_1, plot_2, plot_3, plot_4, ncol = 2) 
+
+grid.arrange(plot_5, plot_6, plot_7, plot_8, plot_9, ncol = 2)
+```
+
+## MBA results comparison
+
+The following tables are results of Market Basket Analysis on each group of panelists.
+```{r, echo=FALSE}
+#load the computed MBA tables
+hh_mba <- read.csv("../cleaned_data/MBA_high_ses_high_spend.csv")
+hl_mba <- read.csv("../cleaned_data/MBA_high_ses_low_spend.csv")
+lh_mba <- read.csv("../cleaned_data/MBA_low_ses_high_spend.csv")
+ll_mba <- read.csv("../cleaned_data/MBA_low_ses_low_spend.csv")
+head(hh_mba)
+head(hl_mba)
+head(lh_mba)
+head(ll_mba)
+```
+
+### High income panelists
+
+We first compare the results within high income panelists.
+```{r, warning=FALSE}
+hh <- hh_mba %>%
+  select(antecedents, consequents)
+hl <- hl_mba %>%
+  select(antecedents, consequents)
+
+high_ses_comparison <- anti_join(hh, hl) #take out the rules missing from high ses low spenders but present in high ses high spenders
+high_ses_comparison <- unique(as.vector(as.matrix(high_ses_comparison)))
+high_ses_comparison <- high_ses_comparison[!high_ses_comparison %in% hl$consequents] #remove the itemsets that appear in high ses low spenders' mba table
+high_ses_comparison <- high_ses_comparison[!high_ses_comparison %in% hl$antecedents]
+high_ses_comparison
+```
+
+The list of items are items that high spenders bought more often than low spenders.
+
+### Low income panelists
+
+The results of low income panelists are also compared.
+```{r, warning=FALSE}
+lh <- lh_mba %>%
+  select(antecedents, consequents)
+ll <- ll_mba %>%
+  select(antecedents, consequents)
+low_ses_comparison <- unique(as.vector(as.matrix(anti_join(lh, ll, by = c("antecedents", "consequents")))))
+low_ses_comparison <- low_ses_comparison[!low_ses_comparison %in% ll$consequents]
+low_ses_comparison <- low_ses_comparison[!low_ses_comparison %in% ll$antecedents]
+low_ses_comparison
+```
+
+The list of items are items that high spenders bought more often than low spenders.
+
+### Combining the results
+```{r}
+high_ses_comparison[high_ses_comparison %in% low_ses_comparison]
+```
+
+Overall, it is observed that, in general, the high spenders tend to buy products that improve their lifestyles, such as RTD tea, milk powder for adults and cereal beverage. Therefore, one difference that we found between high spenders and low spenders is that low spenders tend to buy only 'essentials' from the supermarket, or they seldom buy ready-to-eat/drink products.
+
+```{r}
+high_ses_comparison[!high_ses_comparison %in% low_ses_comparison]
+```
+
+The above list contains items that high spenders with high income bought more often than those with low income.
+
+### Do the low spenders buy something that the high spenders seldom buy?
+
+```{r}
+anti_join(hl, hh)
+anti_join(ll, lh)
+comparison2 <- unique(as.vector(as.matrix(anti_join(ll, lh))))
+comparison2 <- comparison2[!comparison2 %in% lh$antecedents]
+comparison2 <- comparison2[!comparison2 %in% lh$consequents]
+comparison2
+```
+
+From this result, we could see that: 
+
+1. High income low spenders' purchasing patterns are nearly a subset of high income high spenders.
+
+2. Low income low spenders tend to buy confectionery together with instant noodles, condensed/evap milk and flour, whereas low income high spenders seldom do so.
+
+3. Although there exist different purchasing habits between low income low spenders and low income high spenders, the frequent items that they purchase are the same (under the same support threshold).
+
+## Further analysis on location
+
+(tbc)
