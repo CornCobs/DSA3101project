@@ -20,7 +20,10 @@ panel_demo <- panel_demo %>%
                         Income=="Income 1500 - 1999" ~ "[1500, 2000)",
                         Income=="Income 2000 - 2999" ~ "[2000, 3000)",
                         Income=="Income 3000 - 3999" ~ "[3000, 4000)",
-                        Income=="Income 4000 - 4999" ~ "[4000, 5000)"))
+                        Income=="Income 4000 - 4999" ~ "[4000, 5000)"),
+         Race=case_when(str_detect(Ethnicity, "Malay")~"Malay",
+                             str_detect(Ethnicity, "Chinese")~"Chinese",
+                             str_detect(Ethnicity, "Others")~"Others"))
 
 # preprocessing code
 # df <- data %>% left_join(cat_info, by="Category") %>% 
@@ -33,10 +36,7 @@ panel_demo <- panel_demo %>%
 #                         Income=="Income 1500 - 1999" ~ "[1500, 2000)",
 #                         Income=="Income 2000 - 2999" ~ "[2000, 3000)",
 #                         Income=="Income 3000 - 3999" ~ "[3000, 4000)",
-#                         Income=="Income 4000 - 4999" ~ "[4000, 5000)"),
-#        SES=case_when(as.numeric(str_sub(Income, 2, 2)) < 3 ~ "Low",
-#                      as.numeric(str_sub(Income, 2, 2)) > 4 ~ "High",
-#                      TRUE ~ "Medium"))
+#                         Income=="Income 4000 - 4999" ~ "[4000, 5000)"))
 ```
 
 ## 1. Introduction
@@ -87,46 +87,29 @@ panel_demo %>% head() %>% kable()
 ```
 
 ```{r echo=F, message=F}
-lapply(colnames(panel_demo)[2:8], function(x){table(panel_demo[[x]])}) %>% 
-  kable(col.names=c("", "Freq"))
+lapply(colnames(panel_demo)[2:8], 
+       function(x){table(panel_demo[[x]])/nrow(panel_demo)}) %>% 
+  kable(col.names=c("", "Proportion"))
 ```
 
 ### 2.2. Background Information 
 ```{r echo=F, message=F}
 panel_demo %>% 
-  mutate(Ethnicity=case_when(str_detect(Ethnicity, "Malay")~"Malay",
-                             str_detect(Ethnicity, "Chinese")~"Chinese",
-                             str_detect(Ethnicity, "Others")~"Others")) %>% 
-  group_by(Ethnicity) %>% summarise(n=n()) %>% mutate(proportion=n/sum(n)) %>%
+  group_by(Race) %>% summarise(n=n()) %>% mutate(proportion=n/sum(n)) %>%
   kable()
 ```
 We identified that the country of origin for this dataset is Malaysia due to the ethnic group composition.
 Malaysian citizens consist of the ethnic groups Bumiputera (67.4%), Chinese (24.6%), Indians (7.3%) and Others (0.7%).
 
-```{r echo=F, message=F}
+```{r echo=F, message=F, eval=F}
 panel_demo %>% 
-  mutate(Ethnicity=case_when(str_detect(Ethnicity, "Malay")~"Malay",
-                             str_detect(Ethnicity, "Chinese")~"Chinese",
-                             str_detect(Ethnicity, "Others")~"Others"),
-       Income=case_when(Income=="Income < 1500" ~ "[0, 1500)",
-                        Income=="Income >5000" ~ "[5000, )",
-                        Income=="Income 1500 - 1999" ~ "[1500, 2000)",
-                        Income=="Income 2000 - 2999" ~ "[2000, 3000)",
-                        Income=="Income 3000 - 3999" ~ "[3000, 4000)",
-                        Income=="Income 4000 - 4999" ~ "[4000, 5000)")) %>% 
-  group_by(Ethnicity, Income) %>% summarise(n=n()) %>% 
+  group_by(Race, Income) %>% summarise(n=n()) %>% 
   mutate(n=n/sum(n)) %>%
   pivot_wider(names_from=Income, values_from=n) %>% kable()
 ```
 
 ```{r echo=F, message=F}
-panel_demo %>%
-  mutate(Income=case_when(Income=="Income < 1500" ~ "[0, 1500)",
-                          Income=="Income >5000" ~ "[5000, )",
-                          Income=="Income 1500 - 1999" ~ "[1500, 2000)",
-                          Income=="Income 2000 - 2999" ~ "[2000, 3000)",
-                          Income=="Income 3000 - 3999" ~ "[3000, 4000)",
-                          Income=="Income 4000 - 4999" ~ "[4000, 5000)")) %>% 
+panel_demo %>% 
   group_by(location, Income) %>% summarise(n=n()) %>%
   mutate(n=n/sum(n)) %>%
   pivot_wider(names_from=Income, values_from=n) %>% kable()
@@ -146,24 +129,6 @@ data %>%
 Malaysia announced their Movement Control Order (MCO) on 2020-03-18 (Wednesday).
 Essential goods like rice, frozen food spiked in the number of transactions for that week.
 
-```{r echo=F, message=F, eval=F}
-# data %>% group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
-#   group_by(`Panel ID`) %>% summarise(`Average Spending`=mean(Total)) %>% 
-#   left_join(panel_demo, by = c("Panel ID" = "ID")) %>% 
-#   ggplot() + 
-#   # geom_area(aes(x=`Average Spending`, fill=Income), stat ="bin", alpha=0.5) + 
-#   # theme_classic() + xlim(0, 300)
-#   geom_boxplot(aes(x=Income, y=`Average Spending`)) + coord_flip()
-# 
-# data %>% group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
-#   group_by(`Panel ID`) %>% 
-#   summarise(`Average Spending`=mean(Total), Sum=sum(Total), n=length(Total)) %>% 
-#   left_join(panel_demo, by = c("Panel ID" = "ID")) -> tmp
-#   filter(Income == "[5000, )") %>% 
-#   mutate(cutoff = quantile(`Average Spending`, 0.75) + 1.5*IQR(`Average Spending`)) %>% 
-#   filter(`Average Spending` <= cutoff) %>% ggplot() + 
-#   geom_boxplot(aes(Income, `Average Spending`))
-```
 
 -------------------
 
@@ -241,25 +206,46 @@ for (i in 1:12){
   threeMonths <- rbind(threeMonths, x)
 }
 
-threeMonths1 <- threeMonths %>% group_by(Window, RFM) %>% summarise(n=n()) %>% group_by(Window) %>% 
-  summarise(RFM=RFM, Proportion=n/sum(n)) %>% filter((Proportion < 0.1) & (str_sub(RFM, 3) != "3"))
-threeMonths2 <- threeMonths %>% group_by(Window, RFM) %>% summarise(n=n()) %>% group_by(Window) %>% 
-  summarise(RFM=RFM, Proportion=n/sum(n)) %>% filter((Proportion > 0.1))
-threeMonths3 <- threeMonths %>% group_by(Window, RFM) %>% summarise(n=n()) %>% group_by(Window) %>% 
-  summarise(RFM=RFM, Proportion=n/sum(n)) %>% filter((Proportion < 0.1) & (str_sub(RFM, 3) == "3"))
-ggplot() + geom_line(aes(x=Window, y=Proportion, group=RFM), data=threeMonths1, alpha=0.3) +
-  geom_line(aes(x=Window, y=Proportion, color=RFM), data=threeMonths2, size=1.1) + 
-  geom_line(aes(x=Window, y=Proportion, group=RFM), color="purple", data=threeMonths3) +
-  scale_x_continuous(breaks=seq(1,12)) +
-  theme(legend.position = "bottom")
+threeMonths_df <- threeMonths %>% group_by(Window, RFM) %>% summarise(n=n()) %>% 
+  group_by(Window) %>% summarise(RFM=RFM, Proportion=n/sum(n))
+threeMonths_33x <- threeMonths_df %>% filter(Proportion > 0.1)
+threeMonths_31x <- threeMonths_df %>% 
+  filter(Proportion < 0.1, str_sub(RFM, 1, 2) == "31")
+threeMonths_13x <- threeMonths_df %>% 
+  filter(Proportion < 0.1, str_sub(RFM, 1, 2) == "13")
+threeMonths_11x <- threeMonths_df %>% 
+  filter(Proportion < 0.1, str_sub(RFM, 1, 2) == "11")
+threeMonths_others <- threeMonths_df %>% 
+  filter(Proportion < 0.1)
+
+ggplot() + 
+  geom_line(aes(x=Window, y=Proportion, group=RFM, 
+                color="Others"), 
+            data=threeMonths_others, size=1.01) +
+  geom_line(aes(x=Window, y=Proportion, color=RFM), 
+            data=threeMonths_33x, size=1.01) +
+  geom_line(aes(x=Window, y=Proportion, group=RFM, 
+                color="New: {311, 312, 313}"), 
+            data=threeMonths_31x, size=1.01) + 
+  geom_line(aes(x=Window, y=Proportion, group=RFM, 
+                color="Churn risk: {131, 132, 133}"), 
+            data=threeMonths_13x, size=1.01) +
+  geom_line(aes(x=Window, y=Proportion, group=RFM, 
+                color="Lost: {111, 112, 113}"), 
+            data=threeMonths_11x, size=1.01) +
+  scale_x_continuous(breaks=seq(1,12)) + theme_bw() +
+  theme(legend.position = "bottom", panel.border = element_blank()) + 
+  scale_color_brewer(palette="Dark2")
 
 ```
-In general, there are no big changes in terms of the proportion of the RFM for in each window (13 weeks period). 
-The bulk of the customers (~50%) are loyal patrons who visit frequently (score 3) and recently (score 3). 
-The coronavirus occured some time in between window 10 and 11 while 
+In general, there are no big changes (with the exception of `RFM = 331`) in terms of the proportion of the RFM for in each window (13 weeks period). 
+It is important for us to ensure that the customers who are at risk of churning remains low.
+From our segmentation, we can see that most of our customers (~50%) are loyal patrons who visit frequently (score 3) and recently (score 3). 
+The outbreak of Coronavirus occurred some time in between window 10 and 11 while 
 the MCO happened just before window 12. 
-It is obvious that many customers are spending more during the pandemic as seen from the spike in `RFM = 333` (blue line) and the other `M = 3` (purple lines).
+It is obvious that many customers are spending more during the pandemic as seen from the spike in `RFM = 333`.
 
+#### Pre MCO VS Post MCO Period
 ```{r echo=F, message=F}
 preMCO <- data %>% filter((Date < mcoDate) & (Date > mcoDate - postMCO_weeks*7)) %>%
   group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
@@ -296,58 +282,116 @@ postMCO <- data %>% filter(Date > mcoDate) %>%
                              TRUE ~ 3),    # >= RM60/month
          event = "post", RFM = str_c(Recency, Frequency, Monetary)) %>% 
   left_join(panel_demo, by=c("Panel ID"="ID"))
-```
 
-#### How many customers have we lost?
-```{r echo=F, message=F}
-lost <- setdiff(preMCO$`Panel ID`, postMCO$`Panel ID`)
-lost %>% length() %>% kable()
-panel_demo %>% filter(ID %in% lost) %>% group_by(Income) %>% summarise(n=n()) %>% kable()
-preMCO %>% filter(`Panel ID` %in% lost) %>% group_by(RFM) %>% summarise(n=n()) %>% kable()
-```
+postMCOHIHM <- filter(postMCO, Income == "[5000, )", Monetary == 3)$`Panel ID`
+postMCOHILM <- filter(postMCO, Income == "[5000, )", Monetary == 1)$`Panel ID`
+# data %>% filter(Date > mcoDate, `Panel ID` %in% postMCOHIHM) %>%
+#   write_csv("../cleaned_data/postMCOHIHM.csv")
+# data %>% filter(Date > mcoDate, `Panel ID` %in% postMCOHILM) %>%
+#   write_csv("../cleaned_data/postMCOHILM.csv")
+preMCOHIHM <- filter(preMCO, Income == "[5000, )", Monetary == 3)$`Panel ID`
+preMCOHILM <- filter(preMCO, Income == "[5000, )", Monetary == 1)$`Panel ID`
+# data %>% filter((Date < mcoDate) & (Date > mcoDate - postMCO_weeks*7), 
+#                 `Panel ID` %in% preMCOHIHM) %>% 
+#   write_csv("../cleaned_data/preMCOHIHM.csv")
+# data %>% filter((Date < mcoDate) & (Date > mcoDate - postMCO_weeks*7), 
+#                 `Panel ID` %in% preMCOHILM) %>% 
+#   write_csv("../cleaned_data/preMCOHILM.csv")
 
-#### Which customers have we gained?
-```{r echo=F, message=F}
-gained <- setdiff(postMCO$`Panel ID`, preMCO$`Panel ID`)
-postMCO %>% filter(`Panel ID` %in% gained) %>% kable()
-```
-
-#### Out of all the existing customers who stayed, what is the relative movement of Recency?
-```{r echo=F, message=F}
 stayed <- intersect(postMCO$`Panel ID`, preMCO$`Panel ID`)
-r <- rbind(preMCO, postMCO) %>% filter(`Panel ID` %in% stayed)
-r %>% group_by(`Panel ID`) %>% 
-  summarise(ChangeR=last(Recency)-first(Recency)) %>% 
-  left_join(panel_demo, by=c("Panel ID"="ID")) %>% 
-  group_by(ChangeR, Income) %>% summarise(n=n()) %>% 
-  mutate(n=n/sum(n)) %>% ggplot() + geom_tile(aes(x=Income, y=ChangeR, fill=n)) + scale_fill_fermenter()
-# pivot_wider(names_from=Income, values_from=n) %>% kable()
+relative <- rbind(preMCO, postMCO) %>% filter(`Panel ID` %in% stayed)
+relative %>% group_by(`Panel ID`) %>% 
+  summarise(Change=if_else(first(RFM)==last(RFM), "No Change", 
+                           str_c(first(RFM), " -> ", last(RFM)))) %>% 
+  group_by(Change) %>% summarise(n=n()) %>% mutate(Proportion=n/sum(n)) %>% 
+  arrange(desc(Proportion)) %>% head() %>% kable()
 ```
+Among the customers who had stayed on, most of them have no changes in RFM scores.
+We see a significant increase in terms of Monetary score so it would be wise
+for us to try to retain as many of them as possible.
 
-#### Out of all the existing customers who stayed, what is the relative movement of Frequency?
+#### Demographic Analysis
+A closer examination of the Income subgroups of `RFM = 331` before MCO starts is shown as follows:
 ```{r echo=F, message=F}
-r %>% group_by(`Panel ID`) %>% 
-  summarise(ChangeF=last(Frequency)-first(Frequency)) %>% 
-  left_join(panel_demo, by=c("Panel ID"="ID")) %>% 
-  group_by(ChangeF, Income) %>% summarise(n=n()) %>% 
-  mutate(n=n/sum(n)) %>% ggplot() + geom_tile(aes(x=Income, y=ChangeF, fill=n))
-# pivot_wider(names_from=Income, values_from=n) %>% kable()
-```
+preMCO %>% filter(Recency == 3, Frequency == 3, Monetary == 1) %>% 
+  group_by(Income) %>% summarise(Counts=n()) %>% 
+  mutate(Proportion=Counts/sum(Counts)) %>% kable()
 
-#### Out of all the existing customers who stayed, what is the relative movement of Monetary?
-```{r echo=F, message=F}
-r %>% group_by(`Panel ID`) %>% 
-  summarise(ChangeM=last(Monetary)-first(Monetary)) %>% 
-  left_join(panel_demo, by=c("Panel ID"="ID")) %>% 
-  group_by(ChangeM, Income) %>% summarise(n=n()) %>% 
-  mutate(n=n/sum(n)) %>% ggplot() + geom_tile(aes(x=Income, y=ChangeM, fill=n))
-# pivot_wider(names_from=Income, values_from=n) %>% kable()
 ```
+In particular, one group of customers that are of interest are our loyal customers (**high R and F**) who are in the **high income bracket** but have **low M values**. Interestingly, this group of customer actually comprises a significant proportion among the high R and F segment! This further reinforces our beliefs to target them as they are capable of spending more. If we can entice these customers (RFM = 331) to change their consumption patterns to become more like their high income high M counterparts, it will help to increase revenue for the client!
+
+```{r echo=F, message=F, eval=F}
+high_income <- filter(panel_demo, Income == "[5000, )")
+lapply(colnames(high_income)[c(2, 5:9)], 
+       function(x){
+         table(high_income[[x]])/nrow(high_income)}) %>% 
+  kable(col.names=c("", "Proportion"))
+```
+The above shows the subgroups of Income > 5000 customers.
+
+```{r echo=F, message=F}
+demo_als <- preMCO %>% filter(Recency == 3, Frequency == 3, Monetary == 1, 
+                  Income == "[5000, )")
+lapply(colnames(preMCO)[c(7, 10:14)], 
+       function(x){table(demo_als[[x]])/nrow(demo_als)}) %>% 
+  kable(col.names=c("", "Proportion"))
+```
+The above shows the subgroups of Income > 5000 customers with `RFM = 331` before MCO.
+
+```{r echo=F, message=F}
+demo_als <- postMCO %>% filter(Recency == 3, Frequency == 3, Monetary == 1, 
+                  Income == "[5000, )")
+lapply(colnames(preMCO)[c(7, 10:14)], 
+       function(x){table(demo_als[[x]])/nrow(demo_als)}) %>% 
+  kable(col.names=c("", "Proportion"))
+```
+The above shows the subgroups of Income > 5000 customers with `RFM = 331` after MCO.
+
+From the above analyses on the subgroups of customers in the high income bracket, 
+they are largely coming from smaller households, 
+which could partly explain the lower consumption (hence lower expenditure).
+
+
+```{r echo=F, message=F}
+m_inc <- relative %>% filter(Recency == 3, Frequency == 3) %>% 
+  arrange(desc(event)) %>% group_by(`Panel ID`) %>% 
+  summarise(IncreaseM=as.numeric(last(Monetary) > first(Monetary))) %>% 
+  filter(IncreaseM == 1) %>% left_join(panel_demo, by=c("Panel ID"="ID"))
+
+lapply(colnames(m_inc)[c(3,4,6:10)], 
+       function(x){table(m_inc[[x]])/nrow(m_inc)}) %>% 
+  kable(col.names=c("", "Proportion"))
+```
+The above shows the subgroups of customers with R = 3, F = 3 and experienced an increase in M after MCO.
+
 -------------------
 
 ### 4.2. Market Basket Analysis
 
+We thus now turn to analysing the market baskets of the 2 groups to explain the discrepancy and hopefully obtain some insight as to how we can promote greater spending.
+
+Some findings in certain products much more common in high spending groups/certain luxury products? Whatever we manage to find (hopefully)
+
+Based on our market basket analysis, focusing on these products, we have found that amongst the things high spenders buy more than low spenders, these things have the highest confidence:
+
+- X->Y
+- Y->Z
+- X->Z
+- Z->A
+- Z->B
+
 -------------------
 
 ## 5. Conclusion
+Based on our analysis, we would thus suggest **innovative ways to increase sales based on MBA trying to promote item X/Z to low spending high income customers**
 
+- Send the customers whose RFM score changes from either 331 to 332 or 331 to 333 or 332 to 333
+a thank you note for being a good customer and give them a discount voucher to reward and
+encourage their good customer behaviour. 
+**The discount voucher can be applied on any item or of certain items depending on MBA analysis. Maybe the 333 customers can get a universal item discount voucher?**
+
+
+
+
+
+\
