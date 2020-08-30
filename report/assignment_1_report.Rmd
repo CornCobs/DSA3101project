@@ -49,31 +49,31 @@ We are provided with 3 datasets, namely `DSA3101_Hackathon_Categories_Informatio
 ## 2. Exploratory Data Analysis (EDA)
 ### 2.1. Preview of each dataset
 #### `DSA3101_Hackathon_Categories_Information.csv` - 62 rows, 3 columns
-The first 6 rows is as follows:
 ```{r echo=F}
-cat_info %>% head() %>% kable()
+cat_info %>% head() %>% 
+  kable(caption = "Figure 1: First 6 rows of DSA3101_Hackathon_Categories_Information.csv")
 # cat(unique(cat_info$Category), sep=", ")
 ```
 The 62 categories are Baby Cereal, Beer, Belacan, Bird Nest, Biscuits, Bouilon, Butter, Cake, Canned Product, Cereal Beverage, Cereals, Cheese, Chicken Essence, Choc/Nut Spread, Chocolate, Coconut Milk, Coffee, Condensed/Evap Milk, Confectionery, Cooking Oils, Cooking Sauces, Cordials, Creamer, CSD, Cultured Milk, Drinking Water, Eggs, Energy Drinks, Flour, Frozen Food, Fruit/Veg Juices, Ghee, Honey, Ice Cream, Instant Noodles, Instant Soup, Isotonic Drinks, Jam, Kaya, Liquid Milk, Margarine, Milk Powder-Adult, Milk Powder-Infant, Milk Powder-Kids, MSG, Peanut Butter, Rice, RTD Coffee, RTD Tea, Salad Dressing, Savoury Spread, Seasoning Powder, Snack, Soy Milk, Spagetti, Spirits, Sugar, Tea, Tonic Food Drink, Wine, Yoghurt Drink, Yoghurts.
 
-The summary statistics is shown below:
 ```{r echo=F}
-select_if(cat_info, is.numeric) %>% summary() %>% kable()
+select_if(cat_info, is.numeric) %>% summary() %>% 
+  kable(caption = "Figure 2: Summary Statistics")
 ```
 Cross-referencing with other sources, we found that the zero calories (MSG and Drinking Water) is indeed true.
 
 -------------------
 
 #### `DSA3101_Hackathon_Data.csv` - 1318024 rows, 6 columns
-The first 6 rows is as follows:
 ```{r echo=F}
-data %>% head() %>% kable()
+data %>% head() %>% 
+  kable(caption = "Figure 3: First 6 rows of DSA3101_Hackathon_Data.csv")
 ```
 This dataset consists of 156 Sundays (3 full years) which spans from 2017-06-25 to 2020-06-14.
 
-The summary statistics is shown below:
 ```{r echo=F}
-select_if(data, is.numeric) %>% summary() %>% kable()
+select_if(data, is.numeric) %>% summary() %>% 
+  kable(caption = "Figure 4: Summary Statistics")
 ```
 There are entries with value zero in the 3 numerical columns. 
 It could possibly be due to rounding errors (as the values are rounded to nearest 1 decimal place) or
@@ -82,15 +82,15 @@ simply a mistake in recording.
 -------------------
 
 #### `DSA3101_Hackathon_Panelists_Demographics.csv` - 4026 rows, 8 columns
-The first 6 rows is as follows:
 ```{r echo=F, message=F}
-panel_demo %>% head() %>% kable()
+panel_demo %>% head() %>% 
+  kable(caption = "Figure 5: First 6 rows of DSA3101_Hackathon_Panelists_Demographics.csv")
 ```
 
 ```{r echo=F, message=F}
 lapply(colnames(panel_demo)[2:8], 
        function(x){table(panel_demo[[x]])/nrow(panel_demo)}) %>% 
-  kable(col.names=c("", "Proportion"))
+  kable(col.names=c("", "Proportion"), caption = "Figure 6: Proportion of each columns")
 ```
 
 ### 2.2. Background Information 
@@ -106,7 +106,7 @@ panel_demo %>%
 panel_demo %>% 
   group_by(location, Income) %>% summarise(n=n()) %>%
   mutate(n=n/sum(n)) %>%
-  spread(key=Income, value=n) %>% kable()
+  spread(key=Income, value=n) %>% kable(caption = "Figure 7: Location VS Income")
 ```
 It is of no surprise that Central (Capital of Malaysia - Kuala Lumpur) and South (Closer to Singapore) regions are generally more wealthy than North and East Coast.
 
@@ -118,7 +118,8 @@ data %>%
   group_by(Date, Category) %>% summarise(n=n()) %>% ggplot() +
   geom_line(aes(x=Date, y=n, color=Category)) + 
   geom_vline(xintercept=as.Date("2020-03-22"), colour="black", linetype="dotted") +
-  theme(legend.position = "bottom") + ylab("Number of Transactions")
+  theme(legend.position = "bottom") + ylab("Number of Transactions") +
+  labs(title="Figure 8: Essential goods transactions over time")
 ```
 Malaysia announced their Movement Control Order (MCO) on 2020-03-18 (Wednesday).
 Essential goods like rice, frozen food spiked in the number of transactions for that week.
@@ -131,10 +132,9 @@ Essential goods like rice, frozen food spiked in the number of transactions for 
 ### 3.1 Data Imputation
 From the summary statistics, we have identified that there was erroneous data for three different categories of **Pack Size, Volume and Spend**
 
-Here are some examples below:
-
 ```{r echo = F}
-head(filter(data, `Pack Size` == 0 | `Volume` == 0 | `Spend` == 0)) %>% kable()
+head(filter(data, `Pack Size` == 0 | `Volume` == 0 | `Spend` == 0)) %>% 
+  kable(caption = "Figure 9: Examples of erroneous data")
 ```
 We observe that there are 49539 such instances of misrecorded/missing data therefore, we propose a few ways to handle the missing data. 
 
@@ -197,7 +197,8 @@ data = data_cleaned
 ```
 
 ```{r echo=F}
-py$data_cleaned %>% select(4:6) %>% summary() %>% kable()
+py$data_cleaned %>% select(4:6) %>% summary() %>% 
+  kable(caption = "Figure 10: Summary Statistics after imputation")
 ```
 
 Examples from the previous dataset against the new imputed.
@@ -209,8 +210,11 @@ example_cleaned = data_cleaned[filter_1]
 
 ```{r echo=F}
 data %>% filter(Volume == 0, `Panel ID` == "Panel 108052110") %>% 
-  head(2) %>% kable()
-py$example_cleaned %>% mutate(Date=as_date(Date)) %>% head(2) %>% kable()
+  head(2) %>% kable(caption = "Figure 11: Examples of preimputed errorneous data")
+py$example_cleaned %>% mutate(Date=as_date(Date)) %>% head(2) %>% 
+  kable(caption = "Figure 12: Examples of postimputed errorneous data")
+
+data <- filter(data, `Pack Size` != 0, Volume != 0, Spend != 0)
 ```
 
 We can see that the difference in the imputation comparing the before and after has significant improvements in the data, and we are confident that it is an accurate guess of the missing data.
@@ -308,7 +312,8 @@ ggplot() +
             data=threeMonths_11x, size=1.01) +
   scale_x_continuous(breaks=seq(1,12)) + theme_bw() +
   theme(legend.position = "bottom", panel.border = element_blank()) + 
-  scale_color_brewer(palette="Dark2")
+  scale_color_brewer(palette="Dark2") + 
+  labs(title="Figure 13: RFM proportion changes over time")
 
 ```
 In general, there are no big changes (with the exception of `RFM = 331`) in terms of the proportion of the RFM for in each window (13 weeks period). 
@@ -377,7 +382,8 @@ relative %>% group_by(`Panel ID`) %>%
   summarise(Change=if_else(first(RFM)==last(RFM), "No Change", 
                            str_c(first(RFM), " -> ", last(RFM)))) %>% 
   group_by(Change) %>% summarise(n=n()) %>% mutate(Proportion=n/sum(n)) %>% 
-  arrange(desc(Proportion)) %>% head() %>% kable()
+  arrange(desc(Proportion)) %>% head() %>% 
+  kable(caption="Figure 14: Relative changes in RFM between Pre MCO and Post MCO")
 ```
 Among the customers who had stayed on, most of them have no changes in RFM scores.
 We see a significant increase in terms of Monetary score so it would be wise
@@ -388,8 +394,8 @@ A closer examination of the Income subgroups of `RFM = 331` before MCO starts is
 ```{r echo=F, message=F}
 preMCO %>% filter(Recency == 3, Frequency == 3, Monetary == 1) %>% 
   group_by(Income) %>% summarise(Counts=n()) %>% 
-  mutate(Proportion=Counts/sum(Counts)) %>% kable()
-
+  mutate(Proportion=Counts/sum(Counts)) %>% 
+  kable(caption="Figure 15: Income subgroups of RFM = 331 before MCO")
 ```
 In particular, one group of customers that are of interest are our loyal customers (**high R and F**) who are in the **high income bracket** but have **low M values**. Interestingly, this group of customer actually comprises a significant proportion among the high R and F segment! This further reinforces our beliefs to target them as they are capable of spending more. If we can entice these customers (RFM = 331) to change their consumption patterns to become more like their high income high M counterparts, it will help to increase revenue for the client!
 
@@ -398,27 +404,27 @@ high_income <- filter(panel_demo, Income == "[5000, )")
 lapply(colnames(high_income)[c(2, 5:9)], 
        function(x){
          table(high_income[[x]])/nrow(high_income)}) %>% 
-  kable(col.names=c("", "Proportion"))
+  kable(col.names=c("", "Proportion"), 
+        caption="Figure 16: Proportion of each columns for Income > 5000")
 ```
-The above shows the subgroups of Income > 5000 customers.
 
 ```{r echo=F, message=F}
 demo_als <- preMCO %>% filter(Recency == 3, Frequency == 3, Monetary == 1, 
                   Income == "[5000, )")
 lapply(colnames(preMCO)[c(7, 10:14)], 
        function(x){table(demo_als[[x]])/nrow(demo_als)}) %>% 
-  kable(col.names=c("", "Proportion"))
+  kable(col.names=c("", "Proportion"), 
+        caption="Figure 17: Proportion of each columns for Income > 5000 with RFM = 331 before MCO")
 ```
-The above shows the subgroups of Income > 5000 customers with `RFM = 331` before MCO.
 
 ```{r echo=F, message=F}
 demo_als <- postMCO %>% filter(Recency == 3, Frequency == 3, Monetary == 1, 
                   Income == "[5000, )")
 lapply(colnames(preMCO)[c(7, 10:14)], 
        function(x){table(demo_als[[x]])/nrow(demo_als)}) %>% 
-  kable(col.names=c("", "Proportion"))
+  kable(col.names=c("", "Proportion"), 
+        caption="Figure 18: Proportion of each columns for Income > 5000 with RFM = 331 after MCO")
 ```
-The above shows the subgroups of Income > 5000 customers with `RFM = 331` after MCO.
 
 From the above analyses on the subgroups of customers in the high income bracket, 
 they are largely coming from smaller households, 
@@ -433,9 +439,9 @@ m_inc <- relative %>% filter(Recency == 3, Frequency == 3) %>%
 
 lapply(colnames(m_inc)[c(3,4,6:10)], 
        function(x){table(m_inc[[x]])/nrow(m_inc)}) %>% 
-  kable(col.names=c("", "Proportion"))
+  kable(col.names=c("", "Proportion"),
+        caption="Figure 19: Proportion of each columns for customers with R = 3, F = 3 and experienced an increase in M after MCO")
 ```
-The above shows the subgroups of customers with R = 3, F = 3 and experienced an increase in M after MCO.
 
 -------------------
 
