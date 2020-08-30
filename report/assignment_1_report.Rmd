@@ -441,17 +441,111 @@ The above shows the subgroups of customers with R = 3, F = 3 and experienced an 
 
 ### 4.2. Market Basket Analysis
 
+#### MBA on targeted groups
+
+
 We thus now turn to analysing the market baskets of the 2 groups to explain the discrepancy and hopefully obtain some insight as to how we can promote greater spending.
 
-Some findings in certain products much more common in high spending groups/certain luxury products? Whatever we manage to find (hopefully)
+```{r, include=F}
+preMCOHIHM <- read.csv("../cleaned_data/preMCOHIHM.csv")
+preMCOHILM <- read.csv("../cleaned_data/preMCOHILM.csv")
+postMCOHIHM <- read.csv("../cleaned_data/postMCOHIHM.csv")
+postMCOHILM <- read.csv("../cleaned_data/postMCOHILM.csv")
+get_transactions <- function(x) {
+  x %>%
+  mutate(Transaction = paste(Panel.ID, Date, sep = " ,")) %>%
+  select(Transaction, Category) %>%
+  group_by(Transaction) %>%
+  distinct(Category, .keep_all = TRUE)}
+preMCOHIHM_transactions <- get_transactions(preMCOHIHM)
+preMCOHILM_transactions <- get_transactions(preMCOHILM)
+postMCOHIHM_transactions <- get_transactions(postMCOHIHM)
+postMCOHILM_transactions <- get_transactions(postMCOHILM)
+#export for MBA in python
+#write.csv(preMCOHIHM_transactions, "../cleaned_data/preMCOHIHM_transactions.csv")
+#write.csv(preMCOHILM_transactions, "../cleaned_data/preMCOHILM_transactions.csv")
+#write.csv(postMCOHIHM_transactions, "../cleaned_data/postMCOHIHM_transactions.csv")
+#write.csv(postMCOHILM_transactions, "../cleaned_data/postMCOHILM_transactions.csv")
+```
 
-Based on our market basket analysis, focusing on these products, we have found that amongst the things high spenders buy more than low spenders, these things have the highest confidence:
+We successfully generated the MBA rules for the two groups before and after MCO started with minimum 1% support and 1% confidence, then ranked them by lift. (Insert python screenshot here?)
 
-- X->Y
-- Y->Z
-- X->Z
-- Z->A
-- Z->B
+```{r, echo=F}
+preMCOHIHM_mba_rules <- read.csv("../cleaned_data/MBA_PreMCO_HIHM.csv") %>%
+  arrange(-lift) %>%
+  select(-leverage, -conviction)
+preMCOHILM_mba_rules <- read.csv("../cleaned_data/MBA_PreMCO_HILM.csv") %>%
+  arrange(-lift) %>%
+  select(-leverage, -conviction)
+postMCOHIHM_mba_rules <- read.csv("../cleaned_data/MBA_PostMCO_HIHM.csv") %>%
+  arrange(-lift) %>%
+  select(-leverage, -conviction)
+postMCOHILM_mba_rules <- read.csv("../cleaned_data/MBA_PostMCO_HILM.csv") %>%
+  arrange(-lift) %>%
+  select(-leverage, -conviction)
+
+kable(head(preMCOHIHM_mba_rules, n = 10), caption = "preMCOHIHM")
+kable(head(preMCOHILM_mba_rules, n = 10), caption = "preMCOHILM")
+kable(head(postMCOHIHM_mba_rules, n = 10), caption = "postMCOHIHM")
+kable(head(postMCOHILM_mba_rules, n = 10), caption = "postMCOHILM")
+```
+
+It is observed that:
+
+1. There is not much change in the product types they usually buy together before and after MCO for both groups. However, there is generally a slight increase in lift for high spenders, which means that they may be sticking tighter to their routine of buying things that they always buy together. For the low spenders, there is a decrease in lift. This could be attributed to them purchasing randomly, i.e. hoarding, since they seldom had a fix regime of getting things previously when compared to the high spenders. Hence, this implies that they may be a little less prepared in terms of getting things
+
+2. In general, the high spenders tend to buy products such as margarine, CSD and bouilon, which the low spenders do not do as often. Therefore, one difference that we found between high spenders and low spenders is that low spenders tend to buy only 'essentials' from the supermarket.
+
+In order to justify the second finding, we then decided to compare the association rules between the two groups and look for insights from the unique rules. Since the rules are generated under the same threshold, we hope to find products that the low spenders rarely buy.
+
+```{r, echo=FALSE}
+preMCO_comparison1 <- anti_join(preMCOHIHM_mba_rules, preMCOHILM_mba_rules, by = c("antecedents", "consequents"))
+
+preMCO_products <- unique(as.vector(as.matrix(select(preMCO_comparison1, antecedents, consequents))))
+preMCO_products <- preMCO_products[!preMCO_products %in% preMCOHILM_mba_rules$antecedents]
+preMCO_products <- preMCO_products[!preMCO_products %in% preMCOHILM_mba_rules$consequents]
+preMCO_products
+```
+
+```{r, echo=FALSE}
+postMCO_comparison1 <- anti_join(postMCOHIHM_mba_rules, postMCOHILM_mba_rules, by = c("antecedents", "consequents"))
+
+postMCO_products <- unique(as.vector(as.matrix(select(postMCO_comparison1, antecedents, consequents))))
+postMCO_products <- postMCO_products[!postMCO_products %in% postMCOHILM_mba_rules$antecedents]
+postMCO_products <- postMCO_products[!postMCO_products %in% postMCOHILM_mba_rules$consequents]
+postMCO_products
+```
+
+In the above lists of products, it is observed that most of the products are things to improve the lifestyle, such as milk powder for adult, yoghurt drink and cake. This result further proved our finding.
+
+Furthermore, we noticed that after MCO, the high spenders also tend to buy packaged food products such as canned product and frozen food, which the low spenders bought before MCO, but are rarely buying after MCO. 
+
+```{r, echo=FALSE}
+kable(head(arrange(filter(postMCOHIHM_mba_rules, antecedents %in% postMCO_products, consequents %in% postMCO_products), confidence)), caption = "Unique rules post-MCO ranked by confidence")
+```
+
+Based on our market basket analysis, focusing on these products, we have found that after MCO, amongst the things high spenders buy more than low spenders, these things have the highest confidence:
+
+- Snack -> Confectionery
+- Canned Product -> Peanut Butter
+- Coffee -> Cake
+- Coffee -> Kaya
+- Condensed/Evap Milk -> Cordials
+
+
+#### MBA on two different locations
+
+In exploratory analysis of the demographics of the customers, we found out that central area has the highest proportion of high-income customers and east coast has the highest proportion of low-income customers. Therefore, apart from analysing the purchasing patterns of the two subgroups of high-income customers, we also analysed the purchasing patterns of customers from the above-mentioned two locations after MCO:
+
+```{r}
+central <- read.csv("../cleaned_data/central_mba.csv") %>% select(-X, -antecedent_len)
+east_coast <- read.csv("../cleaned_data/east_coast_mba.csv") %>% select(-X, -antecedent_len)
+
+kable(head(arrange(central, -support)), caption = "Central ranked by support")
+kable(head(arrange(east_coast, -support)), caption = "East coast ranked by support")
+```
+
+From the above table, it is observed that the customers from central areas frequently buy eggs and rice/instant noodles/biscuits together, whereas customers from east coast frequently buy eggs and sugar/condensed or evap milk together. This implies that supermarkets at these two locations could try different goods layout.
 
 -------------------
 
