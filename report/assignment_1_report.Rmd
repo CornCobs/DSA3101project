@@ -155,7 +155,7 @@ impute <- reticulate::import('sklearn.impute')
 
 We first encode these different categories into labels.
 
-```{python}
+```{python echo=F, message=F, results='hide'}
 data_cleaned = r.data
 data_cleaned['Date'] = r.pd.to_datetime(data_cleaned['Date'])
 le = r.preprocessing.LabelEncoder()
@@ -166,13 +166,13 @@ data_cleaned = data_cleaned.assign(Category = newcat)
 ```
 Next, we replace all the zero values in these categories to NaN for imputation
 
-```{python}
+```{python echo=F, message=F}
 cols = ["Volume","Pack Size","Spend"]
 data_cleaned[cols] = data_cleaned[cols].replace({0:r.np.nan})
 ```
 
 Next, we do impute with the median value
-```{python}
+```{python echo=F, message=F, results='hide'}
 imp_median = r.impute.IterativeImputer(random_state=0,initial_strategy = "median")
 imp_median.fit(data_cleaned[["Volume","Pack Size", "Spend"]])
 
@@ -181,7 +181,7 @@ newY = imp_median.transform(Y)
 ```
 
 Some final processing bits for the data
-```{python}
+```{python echo=F, message=F}
 subarray0 = r.np.delete(r.np.delete(newY,2, 1),1,1)
 subarray1 = r.np.delete(r.np.delete(newY,0, 1),1,1)
 subarray2 = r.np.delete(r.np.delete(newY,0, 1),0,1)
@@ -446,7 +446,7 @@ The above shows the subgroups of customers with R = 3, F = 3 and experienced an 
 
 We thus now turn to analysing the market baskets of the 2 groups to explain the discrepancy and hopefully obtain some insight as to how we can promote greater spending.
 
-```{r, include=F}
+```{r include=F}
 preMCOHIHM <- read.csv("../cleaned_data/preMCOHIHM.csv")
 preMCOHILM <- read.csv("../cleaned_data/preMCOHILM.csv")
 postMCOHIHM <- read.csv("../cleaned_data/postMCOHIHM.csv")
@@ -470,7 +470,7 @@ postMCOHILM_transactions <- get_transactions(postMCOHILM)
 
 We successfully generated the MBA rules for the two groups before and after MCO started with minimum 1% support and 1% confidence, then ranked them by lift. (Insert python screenshot here?)
 
-```{r, echo=F}
+```{r echo=F}
 preMCOHIHM_mba_rules <- read.csv("../cleaned_data/MBA_PreMCO_HIHM.csv") %>%
   arrange(-lift) %>%
   select(-leverage, -conviction)
@@ -498,29 +498,29 @@ It is observed that:
 
 In order to justify the second finding, we then decided to compare the association rules between the two groups and look for insights from the unique rules. Since the rules are generated under the same threshold, we hope to find products that the low spenders rarely buy.
 
-```{r, echo=FALSE}
+```{r echo=FALSE, comment=NA}
 preMCO_comparison1 <- anti_join(preMCOHIHM_mba_rules, preMCOHILM_mba_rules, by = c("antecedents", "consequents"))
 
 preMCO_products <- unique(as.vector(as.matrix(select(preMCO_comparison1, antecedents, consequents))))
 preMCO_products <- preMCO_products[!preMCO_products %in% preMCOHILM_mba_rules$antecedents]
 preMCO_products <- preMCO_products[!preMCO_products %in% preMCOHILM_mba_rules$consequents]
-preMCO_products
+preMCO_products %>% cat(sep = ", ")
 ```
 
-```{r, echo=FALSE}
+```{r echo=FALSE, comment=NA}
 postMCO_comparison1 <- anti_join(postMCOHIHM_mba_rules, postMCOHILM_mba_rules, by = c("antecedents", "consequents"))
 
 postMCO_products <- unique(as.vector(as.matrix(select(postMCO_comparison1, antecedents, consequents))))
 postMCO_products <- postMCO_products[!postMCO_products %in% postMCOHILM_mba_rules$antecedents]
 postMCO_products <- postMCO_products[!postMCO_products %in% postMCOHILM_mba_rules$consequents]
-postMCO_products
+postMCO_products %>% cat(sep = ", ")
 ```
 
 In the above lists of products, it is observed that most of the products are things to improve the lifestyle, such as milk powder for adult, yoghurt drink and cake. This result further proved our finding.
 
 Furthermore, we noticed that after MCO, the high spenders also tend to buy packaged food products such as canned product and frozen food, which the low spenders bought before MCO, but are rarely buying after MCO. 
 
-```{r, echo=FALSE}
+```{r echo=FALSE}
 kable(head(arrange(filter(postMCOHIHM_mba_rules, antecedents %in% postMCO_products, consequents %in% postMCO_products), confidence)), caption = "Unique rules post-MCO ranked by confidence")
 ```
 
@@ -537,7 +537,7 @@ Based on our market basket analysis, focusing on these products, we have found t
 
 In exploratory analysis of the demographics of the customers, we found out that central area has the highest proportion of high-income customers and east coast has the highest proportion of low-income customers. Therefore, apart from analysing the purchasing patterns of the two subgroups of high-income customers, we also analysed the purchasing patterns of customers from the above-mentioned two locations after MCO:
 
-```{r, echo=F}
+```{r echo=F}
 central <- read.csv("../cleaned_data/central_mba.csv") %>% select(-X, -antecedent_len)
 east_coast <- read.csv("../cleaned_data/east_coast_mba.csv") %>% select(-X, -antecedent_len)
 
@@ -563,6 +563,3 @@ encourage their good customer behaviour.
 Schafer, J. L. (1999). Multiple imputation: a primer. Statistical Methods in Medical Research, 8(1), 3–15. https://doi.org/10.1177/096228029900800102
 
 Anil Jadhav, Dhanya Pramod & Krishnan Ramanathan (2019) Comparison of Performance of Data Imputation Methods for Numeric Dataset, Applied Artificial Intelligence, 33:10, 913-933, DOI: 10.1080/08839514.2019.1637138
-
-
-
