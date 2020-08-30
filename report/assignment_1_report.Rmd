@@ -464,7 +464,7 @@ encourage their good customer behaviour.
 **The discount voucher can be applied on any item or of certain items depending on MBA analysis. Maybe the 333 customers can get a universal item discount voucher?**
 
 
-##6 Biblography
+## 6. Biblography
 
 Schafer, J. L. (1999). Multiple imputation: a primer. Statistical Methods in Medical Research, 8(1), 3–15. https://doi.org/10.1177/096228029900800102
 
