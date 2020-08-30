@@ -537,7 +537,7 @@ Based on our market basket analysis, focusing on these products, we have found t
 
 In exploratory analysis of the demographics of the customers, we found out that central area has the highest proportion of high-income customers and east coast has the highest proportion of low-income customers. Therefore, apart from analysing the purchasing patterns of the two subgroups of high-income customers, we also analysed the purchasing patterns of customers from the above-mentioned two locations after MCO:
 
-```{r}
+```{r, echo=F}
 central <- read.csv("../cleaned_data/central_mba.csv") %>% select(-X, -antecedent_len)
 east_coast <- read.csv("../cleaned_data/east_coast_mba.csv") %>% select(-X, -antecedent_len)
 
