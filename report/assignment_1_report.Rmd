@@ -554,7 +554,7 @@ Our approaches therefore include two parts:
 
 We first look at the results of pre- and post-MCO for both groups:
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=F}
 #post and pre MCO high spending comparison
 preMCO_count <- as.data.frame(table(preMCOHIHM_mba_rules$antecedents)) %>%
   arrange(-Freq) %>%
@@ -577,14 +577,10 @@ postMCO_count1 <- as.data.frame(table(postMCOHILM_mba_rules$antecedents)) %>%
   rename(antecedents = Var1,
          counts = Freq)
 
-kable(head(preMCO_count), format="pipe", caption = "Figure 23: Pre-MCO HIHM") %>%
-  kable_styling(full_width = F)
-kable(head(postMCO_count), format="pipe", caption = "Figure 24: Post-MCO HIHM") %>%
-  kable_styling(full_width = F)
-kable(preMCO_count1, format="pipe", caption = "Figure 25: Pre-MCO HILM") %>%
-  kable_styling(full_width = F)
-kable(postMCO_count1, format="pipe", caption = "Figure 26: Post-MCO HILM") %>%
-  kable_styling(full_width = F)
+kable(head(preMCO_count), format="pipe", caption = "Figure 23: Pre-MCO HIHM")
+kable(head(postMCO_count), format="pipe", caption = "Figure 24: Post-MCO HIHM")
+kable(preMCO_count1, format="pipe", caption = "Figure 25: Pre-MCO HILM")
+kable(postMCO_count1, format="pipe", caption = "Figure 26: Post-MCO HILM")
 ```
 
 ![FIgure name (preMCO)](../images/preMCOHIHM.jpeg)
