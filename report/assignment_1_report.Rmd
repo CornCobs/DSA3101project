@@ -50,6 +50,7 @@ panel_demo <- read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx"
 ```
 
 ## 1. Introduction
+
 In this report, we aim to use both RFM modeling and MBA, using transaction data collected over the past 3 years, to help guide the client to make strategic business decisions to improve profitability. 
 
 We hope to be able to target these 2 key problem statements and give the client clear and concise recommendations to grow their business.
@@ -63,14 +64,18 @@ We are provided with 3 datasets, namely `DSA3101_Hackathon_Categories_Informatio
 `DSA3101_Hackathon_Data.csv` and `DSA3101_Hackathon_Panelists_Demographics.csv`.
 
 ## 2. Exploratory Data Analysis (EDA)
+
 ### 2.1. Preview of each dataset
+
 #### `DSA3101_Hackathon_Categories_Information.csv` - 62 rows, 3 columns
+
 ```{r echo=F}
 cat_info %>% head() %>% 
   kable(format="pipe", 
         caption = "Figure 1: First 6 rows of DSA3101_Hackathon_Categories_Information.csv")
 # cat(unique(cat_info$Category), sep=", ")
 ```
+
 The 62 categories are Baby Cereal, Beer, Belacan, Bird Nest, Biscuits, Bouilon, Butter, Cake, Canned Product, Cereal Beverage, Cereals, Cheese, Chicken Essence, Choc/Nut Spread, Chocolate, Coconut Milk, Coffee, Condensed/Evap Milk, Confectionery, Cooking Oils, Cooking Sauces, Cordials, Creamer, CSD, Cultured Milk, Drinking Water, Eggs, Energy Drinks, Flour, Frozen Food, Fruit/Veg Juices, Ghee, Honey, Ice Cream, Instant Noodles, Instant Soup, Isotonic Drinks, Jam, Kaya, Liquid Milk, Margarine, Milk Powder-Adult, Milk Powder-Infant, Milk Powder-Kids, MSG, Peanut Butter, Rice, RTD Coffee, RTD Tea, Salad Dressing, Savoury Spread, Seasoning Powder, Snack, Soy Milk, Spagetti, Spirits, Sugar, Tea, Tonic Food Drink, Wine, Yoghurt Drink, Yoghurts.
 
 ```{r echo=F}
@@ -83,6 +88,7 @@ Cross-referencing with other sources, we found that the zero calories (MSG and D
 -------------------
 
 #### `DSA3101_Hackathon_Data.csv` - 1318024 rows, 6 columns
+
 ```{r echo=F}
 data %>% head() %>% 
   kable(format="pipe", caption = "Figure 3: First 6 rows of DSA3101_Hackathon_Data.csv")
@@ -101,6 +107,7 @@ It could possibly be due to rounding errors (as the values are rounded to neares
 -------------------
 
 #### `DSA3101_Hackathon_Panelists_Demographics.csv` - 4026 rows, 8 columns
+
 ```{r echo=F, message=F}
 panel_demo %>% head() %>% 
   kable(format="pipe", 
@@ -142,6 +149,7 @@ panel_demo %>%
   spread(key=Income, value=n) %>% 
   kable(format="pipe", caption = "Figure 7: Location VS Income")
 ```
+
 We observe that Central (Capital of Malaysia - Kuala Lumpur) and South (Closer to Singapore) regions are generally more wealthy than North and East Coast. Therefore one possible way of increasing profits for the client would be to increase the pricing of items in the central area.
 
 ```{r echo=F, message=F, fig.width=10}
@@ -155,6 +163,7 @@ data %>%
   theme(legend.position = "bottom") + ylab("Number of Transactions") +
   labs(title="Figure 8: Essential goods transactions over time")
 ```
+
 We observed that there was a spike in the sales transactions of essential goods such as rice, frozen food. We did further investigation and discovered that Malaysia announced their Movement Control Order (MCO) on 2020-03-18 (Wednesday). Therefore, we believe that this increase in sales may be of interest to the client, and would like to further investigate on how to increase brand loyalty due to possible increase in new customers. 
 
 \newpage
@@ -162,12 +171,14 @@ We observed that there was a spike in the sales transactions of essential goods 
 ## 3. Preprocessing
 
 ### 3.1 Data Imputation
+
 From the summary statistics, we have identified that there was erroneous data for three different categories of **Pack Size, Volume and Spend**
 
 ```{r echo = F}
 head(filter(data, `Pack Size` == 0 | `Volume` == 0 | `Spend` == 0)) %>% 
   kable(format="pipe", caption = "Figure 9: Examples of erroneous data")
 ```
+
 We observe that there are 49539 such instances of misrecorded/missing data therefore, we propose a few ways to handle the missing data. 
 
 1. Since the missing data takes up 3.8% of the entire dataset, we can choose to disregard the missing data as missing data that is less than 5% of the dataset is usually inconsequential. (Schafer, 1999)
@@ -185,7 +196,7 @@ enable_iterative_imputer <- reticulate::import('sklearn.experimental.enable_iter
 impute <- reticulate::import('sklearn.impute')
 ```
 
-We first encode these different categories into labels.
+We first encode these different categories into labels. Next, we replace all the zero values in these categories to NaN for imputation. Then, we perform imputation with the median value.
 
 ```{python echo=F, message=F, results='hide'}
 data_cleaned = r.data
@@ -196,15 +207,15 @@ le.fit(categories)
 newcat = le.transform(categories)
 data_cleaned = data_cleaned.assign(Category = newcat)
 ```
-Next, we replace all the zero values in these categories to NaN for imputation
 
 ```{python echo=F, message=F}
+# Then, we replace all the zero values in these categories to NaN for imputation.
 cols = ["Volume","Pack Size","Spend"]
 data_cleaned[cols] = data_cleaned[cols].replace({0:r.np.nan})
 ```
 
-Next, we do impute with the median value
 ```{python echo=F, message=F, results='hide'}
+# Next, we perform imputation with the median value
 imp_median = r.impute.IterativeImputer(random_state=0,initial_strategy = "median")
 imp_median.fit(data_cleaned[["Volume","Pack Size", "Spend"]])
 
@@ -212,8 +223,9 @@ Y = data_cleaned[["Volume","Pack Size", "Spend"]]
 newY = imp_median.transform(Y)
 ```
 
-Some final processing bits for the data
+
 ```{python echo=F, message=F}
+# Some final processing bits for the data
 subarray0 = r.np.delete(r.np.delete(newY,2, 1),1,1)
 subarray1 = r.np.delete(r.np.delete(newY,0, 1),1,1)
 subarray2 = r.np.delete(r.np.delete(newY,0, 1),0,1)
@@ -223,8 +235,8 @@ data_cleaned['Spend'] = r.np.round(subarray2,1)
 data_cleaned['Category'] = categories
 ```
 
-Testing to see if there are any errors with the new imputed data
 ```{python echo=F}
+# Testing to see if there are any errors with the new imputed data
 data = data_cleaned
 ```
 
@@ -233,7 +245,7 @@ py$data_cleaned %>% select(4:6) %>% summary() %>%
   kable(format="pipe", caption = "Figure 10: Summary Statistics after imputation")
 ```
 
-Examples from the previous dataset against the new imputed.
+<!-- Examples from the previous dataset against the new imputed. -->
 
 ```{python echo=F}
 filter_1 = data_cleaned['Panel ID'] == "Panel 108052110" 
@@ -251,26 +263,29 @@ py$example_cleaned %>% mutate(Date=as_date(Date)) %>% head(2) %>%
         caption = "Figure 12: Examples of postimputed errorneous data")
 ```
 
+However we understand the pros and cons of these various methods on how to handle the missing data.
 
+- Deleting Missing Data
 
-However we understand the pros and cons of these various methods on how to handle the missing data. 
-
-1. Deleting Missing Data
-Pros:
+  - Pros:
 It is a simple method that we can use easily.
 
-Cons:
+  - Cons:
 If the data removed is significant, it may affect our results. However, it may not significantly impact the insights we obtain,  as the data is less than 5% of the entire dataset.
 
-2. Imputation using regression imputer
-Pros:
+- Imputation using regression imputer
+
+  - Pros:
 Regression imputer may reduce bias of the dataset.
 We know that it will not introduce any additional assumptions.
 
-Cons:
-It may be difficult to accomplish as we do not have much experience in it.
+  - Cons:
+It is rather time consuming to split the dataset into the categories and perform the imputation.
+Without splitting, the regression imputer is unable to treat the categories as factors, 
+thereby affecting the quality of the imputation.
 
 Therefore, our team ultimately chose to proceed to just remove the data.
+
 ```{r echo=F}
 data <- filter(data, `Pack Size` != 0, Volume != 0, Spend != 0)
 ```
@@ -280,6 +295,7 @@ data <- filter(data, `Pack Size` != 0, Volume != 0, Spend != 0)
 ## 4. Analysis
 
 ### 4.1. RFM Modelling over Time
+
 Assumptions:
 
 1. Weekly data represents the purchases a customer has made in that particular week.
@@ -375,6 +391,7 @@ ggplot() +
   labs(title="Figure 13: RFM proportion changes over time")
 
 ```
+
 In general, there are no big changes (with the exception of `RFM = 331`) in terms of the proportion of the RFM for in each window (13 weeks period). 
 
 It is important for us to ensure that the customers who are at risk of churning remains low.
@@ -386,6 +403,7 @@ the MCO happened just before window 12.
 It is obvious that many customers are spending more during the pandemic as seen from the spike in `RFM = 333`.
 
 #### Pre MCO VS Post MCO Period
+
 ```{r echo=F, message=F}
 preMCO <- data %>% filter((Date < mcoDate) & (Date > mcoDate - postMCO_weeks*7)) %>%
   group_by(`Panel ID`, `Date`) %>% summarise(Total=sum(Spend)) %>% 
@@ -448,11 +466,14 @@ relative %>% group_by(`Panel ID`) %>%
   kable(format="pipe", 
         caption="Figure 14: Relative changes in RFM between Pre MCO and Post MCO")
 ```
+
 Among the customers who had stayed on, most of them have no changes in RFM scores.
 We see a significant increase in terms of Monetary score. This could possibly be due to more customers hoarding on essential items. Therefore, it would be wise to retain as much of these customers as possible and increase brand loyalty to ultimately increase customer spending.
 
 #### Demographic Analysis
+
 A closer examination of the Income subgroups of `RFM = 331` before MCO starts is shown as follows:
+
 ```{r echo=F, message=F}
 preMCO %>% filter(Recency == 3, Frequency == 3, Monetary == 1) %>% 
   group_by(Income) %>% summarise(Counts=n()) %>% 
@@ -460,6 +481,7 @@ preMCO %>% filter(Recency == 3, Frequency == 3, Monetary == 1) %>%
   kable(format="pipe", 
         caption="Figure 15: Income subgroups of RFM = 331 before MCO")
 ```
+
 In particular, one group of customers that are of interest are our loyal customers (**high R and F**) who are in the **high income bracket** but have **low M values**. Interestingly, this group of customer actually comprises a significant proportion among the high R and F segment! 
 
 This further reinforces our beliefs to target them as they are capable of spending more. If we can entice these customers (RFM = 331) to change their consumption patterns to become more like their high income high M counterparts, it will help to increase revenue for the client!
@@ -554,6 +576,7 @@ Our approaches therefore include two parts:
 
 We first look at the results of pre- and post-MCO for both groups:
 
+
 ```{r, echo=FALSE, warning=F}
 #post and pre MCO high spending comparison
 preMCO_count <- as.data.frame(table(preMCOHIHM_mba_rules$antecedents)) %>%
@@ -581,12 +604,16 @@ kable(head(preMCO_count), format="pipe", caption = "Figure 23: Pre-MCO HIHM")
 kable(head(postMCO_count), format="pipe", caption = "Figure 24: Post-MCO HIHM")
 kable(preMCO_count1, format="pipe", caption = "Figure 25: Pre-MCO HILM")
 kable(postMCO_count1, format="pipe", caption = "Figure 26: Post-MCO HILM")
+
 ```
 
-![FIgure name (preMCO)](../images/preMCOHIHM.jpeg)
-![FIgure name (preMCO)](../images/postMCOHIHM.jpeg)
-![FIgure name (preMCO)](../images/preMCOHILM.jpeg)
-![FIgure name (preMCO)](../images/postMCOHILM.jpeg)
+![](../images/preMCOHIHM.jpeg)
+
+![](../images/postMCOHIHM.jpeg)
+
+![](../images/preMCOHILM.jpeg)
+
+![](../images/postMCOHILM.jpeg)
 
 From the figures and the tables, we could see that:
 
@@ -597,22 +624,12 @@ From the figures and the tables, we could see that:
 \newpage
 
 ## 5. Conclusion
-```{r echo=F,message=F}
-#Based on our analysis, we would thus suggest **innovative ways to increase sales based on MBA trying to promote item X/Z to low spending high income customers**
-
-#Send the customers whose RFM score changes from either 331 to 332 or 331 to 333 or 332 to 333 a thank you note for being a good customer and give them a discount voucher to reward and encourage their good customer behaviour. 
-#**The discount voucher can be applied on any item or of certain items depending on MBA analysis. Maybe the 333 customers can get a universal item discount voucher?**
-
-#This was the previous statement
-```
 
 1. We observe that most of the customers with higher purchasing power are in the central and southern location. Therefore, we believe that if we have increased pricing options in the central and southern regions as compared to the rest of the regions these customers tend to be more affluent.
 
 2. We observe that there are a large group of customers that have high affluence and have been recent spenders but are not spending as much. So we propose to target customers with RFM score of 331 and promote advertisements of more luxurious items to increase the profit/customer for those that are more affluent. This can be dont by giving them thank you notes or more discount vouchers on the higher priced items vs lower priced items to reward this customer behaviour.
 
 3. We observe that high spenders have been purchasing more after MCO. To encourage them to continue with this behaviour, we recommend to give promotions to items such as coconut milk and sugar, to further increase spending from high-income-high-spending customers. We also observe that low spenders are purchasing less after MCO. It is thus recommended to place sugar and items such as tea and milk together to encourage high-income-low-spending customers to shift back to their normal purchasing styles, or hold campaigns for this kind of item sets, such as bundle sales.
-
-\newpage
 
 ## 6. Biblography
 
