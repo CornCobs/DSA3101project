@@ -10,240 +10,113 @@ import multiprocessing
 
 import plotly.express as px
 
-st.title('DSA3101')
+from sklearn.neighbors import BallTree
+
+np.random.seed(0)
+
+st.title('LETS GO SHOPEE PEE PEE PEE!')
 
 @st.cache
 def load_data(nrows=None):
-    # data = pd.read_csv("../data/data.csv", nrows=nrows)
-    data = pd.read_csv("../data/DSA3101_Hackathon_Data.csv", nrows=nrows)
-    data['Date'] = pd.to_datetime(data['Date'])
-    data = data.sort_values(by='Date')
+    data = pd.read_csv("../data/data.csv", nrows=nrows, parse_dates=[1])
     return data
 
 data = load_data()
 panel_demo = pd.read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
+U = pd.read_csv("../models/U.csv")
+V = pd.read_csv("../models/V.csv")
+panels = U['Panel ID']
+products = V['Product']
+d = U.shape[1]
 
-if st.checkbox('Show data'):
-    st.subheader('First 1000 entries')
-    st.dataframe(data.head(1000))
+# UV = pd.DataFrame(UV, index=panels, columns=products)
 
-unique_dates = data.Date.unique()
+#####################################################################################################################################
 
-st.subheader('RFM Modelling')
-window = st.slider('Window (in Weeks)', 4, len(unique_dates)-1, 52)
-score = st.slider('Score', 2, 6, 3)
-weektofilter = st.slider('Week', window, len(unique_dates), len(unique_dates))  # min, max, default
-refDateUpper = unique_dates[weektofilter-1]
-refDateLower = unique_dates[weektofilter-window]
-txt = f"Time intervals {refDateLower.astype(str)[:10]} to {refDateUpper.astype(str)[:10]}"
+panel_id = st.selectbox(label="Panel ID", options=sorted(data['Panel ID'].unique()), index=1)
 
-rfmModel = data[data['Date'] <= refDateUpper]
-rfmModel = rfmModel[rfmModel['Date'] >= refDateLower].groupby(['Panel ID', 'Date']).agg(
-    {'Spend': lambda x: x.sum()}).reset_index().groupby(['Panel ID']).agg(
-    {'Date': lambda x: (refDateUpper-x.max()).days,    #Creating the RFM model dataframe
-    'Panel ID': lambda x: len(x),
-    'Spend': lambda x : x.mean()})
+UV = (U[U['Panel ID'] == panel_id].values[:, 1:] @ V.values[:, 1:].T).ravel()
 
-rfmModel.rename(columns={'Date' : 'Recency','Panel ID':'Frequency', 'Spend':'Monetary'}, inplace=True)
-rfmModel = rfmModel.reset_index()
-rfmModel.Recency /= 7
+num_entries = int(st.text_input("Max no. of entries: ", 10))
+st.subheader(f"[Historical Purchases] Your last {num_entries} purchases")
+history = data[data['Panel ID'] == panel_id] \
+    .sort_values(by=['Week', 'Spend'], ascending=[False, False])[['Product', 'Date', 'Spend']] \
+    .drop_duplicates() \
+    .head(num_entries) \
+    .reset_index(drop=True)
+st.table(history.style.format({'Spend': '{:.2f}'}))
+st.text(f"Would you like to buy them again? :)")
 
-q = np.arange(start=1/score, stop=1, step=1/score)
-if q[-1] == 1:
-    q = q[:-1]
-quantiles = rfmModel.quantile(q=q) # Get a dataframe of quantiles for each column
-st.text("Quantile Cuts")
-st.dataframe(quantiles)
+#####################################################################################################################################
 
-quantiles = quantiles.to_dict() #Convert the dataframe into a nested dictionary of quantiles
+st.subheader(f"[Current Discounts/Promotions] HOT/FLASH DEALS")
+st.text(f"""Sort by stock inventory availability from most to least 
+and perishable goods to non perishable goods""")
 
-def RScores(x,p,d):   #Functions to get the RFM scores. For R scores, the smaller the number the higher the rank (most recent)
-    for i in range(len(q)):
-        if x <= d[p][q[i]]:
-            return len(q) - i + 1
-    return 1
+#####################################################################################################################################
+
+st.subheader(f"[Current Demand] TRENDING ITEMS")
+window = st.slider('Window (in Weeks)', 1, 156, 1)
+k = int(st.text_input("Number of products: ", 5))
+st.text(f"Top {k} sales in the past {window} week(s)")
+trending = data[data.Week >= 156-window][['Product', 'Category']].groupby(['Product']).agg(['count'])
+trending.columns = ['Count']
+st.table(trending  \
+    .sort_values(by=['Count'], ascending=[False]) \
+    .head().reset_index())
+
+#####################################################################################################################################
+
+st.subheader(f"[Historical Views] Recently viewed")
+st.table(data.Product.sample(5).reset_index(drop=True))
+st.text(f"You have recently viewed these products. Would you like to purchase them :)")
+
+#####################################################################################################################################
+
+st.subheader(f"[User Similarity] See what products are your like-minded peers buying")
+num_panels = int(st.text_input("Number of similar panels: ", 5))
+tree = BallTree(U[[f"X{_}" for _ in range(1, d)]], leaf_size=30)
+_, ind = tree.query(U[U['Panel ID']==panel_id][[f"X{_}" for _ in range(1, d)]], k=num_panels+1)
+
+similar_panels = [panels[_] for _ in ind[0] if panels[_] != panel_id]
+        
+st.table(data[data['Panel ID'].isin(similar_panels)] [['Panel ID', 'Product', 'Date', 'Spend']] \
+    .drop_duplicates() \
+    .groupby('Panel ID') \
+    .head(max(min(10//num_panels, 5), 1)) \
+    .sort_values(by=['Date', 'Spend'], ascending=[False, False]) \
+    .reset_index(drop=True) \
+    .style.format({'Spend': '{:.2f}'}))
+
+#####################################################################################################################################
+
+st.subheader(f"[Item Similarity] See what products are similar to your past purchases")
+num_items = int(st.text_input("Number of similar products: ", 5))
+tree = BallTree(U[[f"X{_}" for _ in range(1, d)]], leaf_size=30)
+product_list = list(history.Product)
+if num_items < len(product_list):
+    product_list = product_list[:num_items]
     
-def FMScores(x,p,d):     #Function to get F and M scores. For F and M, the higher the rank, the more frequent and the more money
-    for i in range(len(q)):
-        if x <= d[p][q[i]]:
-            return i + 1
-    return len(q) + 1
+similar_items = []
+for prod in product_list:
+    _, ind = tree.query(V[V['Product']==prod][[f"X{_}" for _ in range(1, d)]], k=max(num_items//num_entries+1, 1))
+    similar_items.extend([products[_] for _ in ind[0] if products[_] not in product_list])
+        
+similar_items_df = data[data['Product'].isin(similar_items)] [['Product', 'Spend', 'Volume', 'Pack Size', 'Category']] \
+    .drop_duplicates() \
+    .groupby('Product') \
+    .head(1) \
+    .sort_values(by=['Spend'], ascending=[False]) \
+    .reset_index(drop=True)
 
-#Apply a function along a column of the dataFrame.
-rfmModel['R'] = rfmModel['Recency'].apply(RScores,args=('Recency',quantiles))
-rfmModel['F'] = rfmModel['Frequency'].apply(FMScores,args=('Frequency',quantiles))
-rfmModel['M'] = rfmModel['Monetary'].apply(FMScores,args=('Monetary',quantiles))
-rfmModel['RFM'] = rfmModel.R.map(str) + rfmModel.F.map(str) + rfmModel.M.map(str)
-rfmModel = rfmModel.sort_values(by='RFM').merge(panel_demo, left_on='Panel ID', right_on='ID')
+similar_items_df['Spend'] = similar_items_df['Spend']/similar_items_df['Pack Size']
+similar_items_df['Volume'] = similar_items_df['Volume']/similar_items_df['Pack Size']
 
-fig = px.scatter_3d(rfmModel, x='Recency', y='Frequency', z='Monetary',
-                    color='RFM', hover_name="Panel ID", 
-                    hover_data=["BMI", "Income", "Ethnicity", "Lifestage", "Strata", "#HH", "location"])
-fig.update_layout(title=txt, autosize=False,
-                  width=800, height=800,
-                  margin=dict(l=40, r=40, b=40, t=40))
-fig.update_traces(marker=dict(size=4))
-st.plotly_chart(fig)
-
+st.table(similar_items_df[['Product', 'Spend', 'Volume', 'Category']] \
+    .style.format({'Spend': '{:.2f}', 'Volume': '{:.2f}'}))
 
 #####################################################################################################################################
 
-st.subheader('Change')
-window = st.slider('Window (in Weeks)', 4, len(unique_dates)//2, 12)
-score = st.slider('Score', 2, 5, 3)
-week_final = st.slider('Week', 2*window, len(unique_dates), len(unique_dates))
-field = st.selectbox(label="Filter by", options=("None", "Recency", "Frequency", "Monetary"))
-refDateFinalUpper = unique_dates[week_final-1]
-refDateFinalLower = unique_dates[week_final-window]
-refDateInitUpper = unique_dates[week_final-window-1]
-refDateInitLower = unique_dates[week_final-window-window]
-txt = f"Comparing time periods {refDateInitLower.astype(str)[:10]} to {refDateInitUpper.astype(str)[:10]} with {refDateFinalLower.astype(str)[:10]} to {refDateFinalUpper.astype(str)[:10]}"
-
-rfmModelFinal = data[data['Date'] <= refDateFinalUpper]
-rfmModelFinal = rfmModelFinal[refDateFinalLower <= rfmModelFinal['Date']].groupby(['Panel ID', 'Date']).agg(
-    {'Spend': lambda x: x.sum()}).reset_index().groupby('Panel ID').agg(
-    {'Date': lambda x: (refDateFinalUpper-x.max()).days,    #Creating the RFM model dataframe
-    'Panel ID': lambda x: len(x),
-    'Spend': lambda x : x.mean()} )
-rfmModelInit = data[data['Date'] <= refDateInitUpper]
-rfmModelInit = rfmModelInit[refDateInitLower <= rfmModelInit['Date']].groupby(['Panel ID', 'Date']).agg(
-    {'Spend': lambda x: x.sum()}).reset_index().groupby('Panel ID').agg(
-    {'Date': lambda x: (refDateInitUpper-x.max()).days,    #Creating the RFM model dataframe
-    'Panel ID': lambda x: len(x),
-    'Spend': lambda x : x.mean()} )
-
-rfmModelFinal.rename(columns={'Date' : 'Recency','Panel ID':'Frequency', 'Spend':'Monetary'}, inplace=True)
-rfmModelFinal = rfmModelFinal.reset_index()
-rfmModelFinal.Recency /= 7
-rfmModelFinal.Recency = rfmModelFinal.Recency.map(int)
-
-rfmModelInit.rename(columns={'Date' : 'Recency','Panel ID':'Frequency', 'Spend':'Monetary'}, inplace=True)
-rfmModelInit = rfmModelInit.reset_index()
-rfmModelInit.Recency /= 7
-rfmModelInit.Recency = rfmModelInit.Recency.map(int)
-
-q = np.arange(start=1/score, stop=1, step=1/score)
-if q[-1] == 1:
-    q = q[:-1]
-quantilesFinal = rfmModelFinal.quantile(q=q) # Get a dataframe of quantiles for each column
-quantilesFinal = quantilesFinal.to_dict() #Convert the dataframe into a nested dictionary of quantiles
-quantilesInit = rfmModelInit.quantile(q=q) # Get a dataframe of quantiles for each column
-quantilesInit = quantilesInit.to_dict() #Convert the dataframe into a nested dictionary of quantiles
-
-#Apply a function along a column of the dataFrame.
-rfmModelFinal['R'] = rfmModelFinal['Recency'].apply(RScores,args=('Recency',quantilesFinal))
-rfmModelFinal['F'] = rfmModelFinal['Frequency'].apply(FMScores,args=('Frequency',quantilesFinal))
-rfmModelFinal['M'] = rfmModelFinal['Monetary'].apply(FMScores,args=('Monetary',quantilesFinal))
-rfmModelFinal['RFM'] = rfmModelFinal.R.map(str) + rfmModelFinal.F.map(str) + rfmModelFinal.M.map(str)
-rfmModelFinal = rfmModelFinal.sort_values(by='RFM')
-rfmModelFinal['State'] = 1
-rfmModelInit['R'] = rfmModelInit['Recency'].apply(RScores,args=('Recency',quantilesInit))
-rfmModelInit['F'] = rfmModelInit['Frequency'].apply(FMScores,args=('Frequency',quantilesInit))
-rfmModelInit['M'] = rfmModelInit['Monetary'].apply(FMScores,args=('Monetary',quantilesInit))
-rfmModelInit['RFM'] = rfmModelInit.R.map(str) + rfmModelInit.F.map(str) + rfmModelInit.M.map(str)
-rfmModelInit = rfmModelInit.sort_values(by='RFM')
-rfmModelInit['State'] = 0
-
-rfmModelCombined = rfmModelFinal.append(rfmModelInit)
-
-if field == "None":
-    rfmModelCombined_df = rfmModelCombined.pivot(index='Panel ID',columns='State').dropna()
-    rfmModelCombined_df = rfmModelCombined_df[rfmModelCombined_df['RFM'][0] != rfmModelCombined_df['RFM'][1]]
-    rfmModelCombined_df['ChangeR'] = np.sign(rfmModelCombined_df["R"][1] - rfmModelCombined_df["R"][0])
-    rfmModelCombined_df['ChangeF'] = np.sign(rfmModelCombined_df["F"][1] - rfmModelCombined_df["F"][0])
-    rfmModelCombined_df['ChangeM'] = np.sign(rfmModelCombined_df["M"][1] - rfmModelCombined_df["M"][0])
-    rfmModelCombined_df['Change'] = rfmModelCombined_df['ChangeR'].map(str) + ", " + \
-        rfmModelCombined_df['ChangeF'].map(str) + ", " + rfmModelCombined_df['ChangeM'].map(str)
-    rfmModelCombined_df = rfmModelCombined_df[['Change']].droplevel('State', axis=1).reset_index()
-    rfmModelCombined_df2 = rfmModelCombined[rfmModelCombined['Panel ID'].isin(rfmModelCombined_df['Panel ID'])].merge(rfmModelCombined_df, on='Panel ID')
-
-else:
-    prefix = field[0]
-    rfmModelCombined_df = rfmModelCombined.pivot(index='Panel ID',columns='State').dropna()
-    rfmModelCombined_df[f'Change{prefix}'] = np.sign(rfmModelCombined_df[prefix][1] - rfmModelCombined_df[prefix][0])
-    rfmModelCombined_df = rfmModelCombined_df[rfmModelCombined_df[f'Change{prefix}'] != 0]
-    rfmModelCombined_df = rfmModelCombined_df[[f'Change{prefix}']].droplevel('State', axis=1).reset_index()
-    rfmModelCombined_df2 = rfmModelCombined[rfmModelCombined['Panel ID'].isin(rfmModelCombined_df['Panel ID'])].merge(rfmModelCombined_df, on='Panel ID')
-
-change_dict= {'Recency': 'ChangeR', 'Frequency': 'ChangeF', 'Monetary': 'ChangeM', 'None': 'Change'}
-rfmModelCombined_df2['State'] = rfmModelCombined_df2['State'].map({0: 'Before', 1:'After'})
-rfmModelCombined_df2 = rfmModelCombined_df2.merge(panel_demo, left_on='Panel ID', right_on='ID')
-
-fig = px.line_3d(rfmModelCombined_df2, x='Recency', y='Frequency', z='Monetary', color=change_dict[field], line_group='Panel ID',
-                hover_name="Panel ID", 
-                hover_data=["RFM", "State", "BMI", "Income", "Ethnicity", "Lifestage", "Strata", "#HH", "location"], 
-                labels={"ChangeR": "Recency", "ChangeF": "Frequency", "ChangeM": "Monetary"})
-                
-fig.update_layout(title=txt, autosize=False,
-                  width=800, height=800,
-                  margin=dict(l=40, r=40, b=40, t=40))
-st.plotly_chart(fig)
-
-#####################################################################################################################################
-
-st.subheader("Panel's Behaviour over Time")
-window = st.slider('Window (in Weeks)', 4, len(unique_dates)-1, 104)
-score = st.slider('Score', 2, 5, 5)
-cutoff = st.slider('Cutoff week', window+1, len(unique_dates), len(unique_dates))
-panel_id = st.selectbox(label="Panel ID", options=sorted(data['Panel ID'].unique()))
-panel_data = pd.DataFrame()
-
-for weektofilter in range(window, cutoff):
-    refDateUpper = unique_dates[weektofilter-1]
-    refDateLower = unique_dates[weektofilter-window]
-
-    rfmModel = data[data['Date'] <= refDateUpper]
-    rfmModel = rfmModel[rfmModel['Date'] >= refDateLower].groupby(['Panel ID', 'Date']).agg(
-    {'Spend': lambda x: x.sum()}).reset_index().groupby('Panel ID').agg(
-        {'Date': lambda x: (refDateUpper-x.max()).days,    #Creating the RFM model dataframe
-        'Panel ID': lambda x: len(x),
-        'Spend': lambda x : x.mean()})
-
-    rfmModel.rename(columns={'Date' : 'Recency','Panel ID':'Frequency', 'Spend':'Monetary'}, inplace=True)
-    rfmModel = rfmModel.reset_index()
-    rfmModel.Recency /= 7
-
-    q = np.arange(start=1/score, stop=1, step=1/score)
-    if q[-1] == 1:
-        q = q[:-1]
-    quantiles = rfmModel.quantile(q=q) # Get a dataframe of quantiles for each column
-    quantiles = quantiles.to_dict() #Convert the dataframe into a nested dictionary of quantiles
-
-    #Apply a function along a column of the dataFrame.
-    rfmModel['R'] = rfmModel['Recency'].apply(RScores,args=('Recency',quantiles))
-    rfmModel['F'] = rfmModel['Frequency'].apply(FMScores,args=('Frequency',quantiles))
-    rfmModel['M'] = rfmModel['Monetary'].apply(FMScores,args=('Monetary',quantiles))
-    rfmModel['RFM'] = rfmModel.R.map(str) + rfmModel.F.map(str) + rfmModel.M.map(str)
-    # rfmModel = rfmModel.sort_values(by='RFM')
-    rfmModel['Date'] = refDateUpper
-    panel_data = panel_data.append(rfmModel[['Date', 'Recency', 'Frequency', 'Monetary', 'RFM']][rfmModel['Panel ID'] == panel_id])
-
-first = str(panel_data.Date.tolist()[0])[:-9]
-after = panel_data.RFM.tolist()[-1]
-before = panel_data.RFM.tolist()[-2]
-last = str(panel_data.Date.tolist()[-1])[:-9]
-if before == after:
-    txt = f"{panel_id}'s RFM score has no change in the last week"
-else:
-    txt = f"{panel_id}'s RFM changes from {before} to {after} in the last week"
-
-st.dataframe(panel_demo[panel_demo['ID'] == panel_id])
-
-st.text(f"Time period: {first} to {last}")
-
-fig = px.line_3d(panel_data, x='Recency', y='Frequency', z='Monetary',
-                 hover_name="Date", hover_data=["RFM"])
-fig.update_layout(title=txt, autosize=False,
-                  width=800, height=800,
-                  margin=dict(l=40, r=40, b=40, t=40))
-fig.update_traces(marker=dict(size=4))
-st.plotly_chart(fig)
-
-
-
-
-
-
-
-
-
+st.subheader(f"You may also like")
+num_prod = int(st.text_input("No. of products: ", 5))
+st.table(products[np.argsort(UV)][-num_prod:][::-1].reset_index(drop=True))
