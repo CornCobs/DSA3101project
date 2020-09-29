@@ -36,5 +36,6 @@ fuzzy_matched <-inconsistent_imputers %>% filter(sd < 0.5) %>%
 
 names(correct) <- c("pid", "date", "cat", "pack_size", "vol", "spend")
 
-data_imputed <- rbind(true_match, fuzzy_matched, correct)
+data_imputed <- rbind(true_match, fuzzy_matched, correct) %>% ungroup() %>% 
+  filter(pack_size != 0, spend != 0)
 write_csv(data_imputed, "../cleaned_data/imputed_data.csv")
