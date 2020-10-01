@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Sep 29 21:56:06 2020
+
+@author: chengling
+"""
 import streamlit as st
 # run the command `streamlit run app.py` in terminal to start
 import numpy as np
@@ -23,8 +30,8 @@ def load_data(nrows=None):
 
 data = load_data()
 panel_demo = pd.read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
-U = pd.read_csv("../models/U30.csv")
-V = pd.read_csv("../models/V30.csv")
+U = pd.read_csv("../models/U.csv")
+V = pd.read_csv("../models/V.csv")
 panels = U['Panel ID']
 products = V['Product']
 d = U.shape[1]
@@ -63,7 +70,7 @@ trending = data[data.Week >= 156-window][['Product', 'Category']].groupby(['Prod
 trending.columns = ['Count']
 st.table(trending  \
     .sort_values(by=['Count'], ascending=[False]) \
-    .head().reset_index())
+    .head(k).reset_index())
 
 #####################################################################################################################################
 
@@ -83,7 +90,7 @@ similar_panels = [panels[_] for _ in ind[0] if panels[_] != panel_id]
 st.table(data[data['Panel ID'].isin(similar_panels)] [['Panel ID', 'Product', 'Date', 'Spend']] \
     .drop_duplicates() \
     .groupby('Panel ID') \
-    .head(max(min(10//num_panels, 5), 1)) \
+    .head(1) \
     .sort_values(by=['Date', 'Spend'], ascending=[False, False]) \
     .reset_index(drop=True) \
     .style.format({'Spend': '{:.2f}'}))
@@ -94,8 +101,6 @@ st.subheader(f"[Item Similarity] See what products are similar to your past purc
 num_items = int(st.text_input("Number of similar products: ", 5))
 tree = BallTree(U[[f"X{_}" for _ in range(1, d)]], leaf_size=30)
 product_list = list(history.Product)
-if num_items < len(product_list):
-    product_list = product_list[:num_items]
     
 similar_items = []
 for prod in product_list:
@@ -107,16 +112,22 @@ similar_items_df = data[data['Product'].isin(similar_items)] [['Product', 'Spend
     .groupby('Product') \
     .head(1) \
     .sort_values(by=['Spend'], ascending=[False]) \
-    .reset_index(drop=True)
+    .reset_index(drop=True) 
+    
+if num_items < len(similar_items_df):
+    similar_items_df = similar_items_df[:num_items]    
 
 similar_items_df['Spend'] = similar_items_df['Spend']/similar_items_df['Pack Size']
 similar_items_df['Volume'] = similar_items_df['Volume']/similar_items_df['Pack Size']
 
 st.table(similar_items_df[['Product', 'Spend', 'Volume', 'Category']] \
-    .style.format({'Spend': '{:.2f}', 'Volume': '{:.2f}'}))
+         .style.format({'Spend': '{:.2f}', 'Volume': '{:.2f}'}))
+    
 
 #####################################################################################################################################
 
 st.subheader(f"You may also like")
 num_prod = int(st.text_input("No. of products: ", 5))
-st.table(products[np.argsort(UV)][-num_prod:][::-1].reset_index(drop=True))
+st.table(products[np.argsort(UV)][-num_prod:][::-1].drop_duplicates() \
+        .head(num_prod) \
+        .reset_index(drop=True))
