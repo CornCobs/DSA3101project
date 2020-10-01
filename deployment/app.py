@@ -23,8 +23,8 @@ def load_data(nrows=None):
 
 data = load_data()
 panel_demo = pd.read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
-U = pd.read_csv("../models/U.csv")
-V = pd.read_csv("../models/V.csv")
+U = pd.read_csv("../models/U30.csv")
+V = pd.read_csv("../models/V30.csv")
 panels = U['Panel ID']
 products = V['Product']
 d = U.shape[1]
