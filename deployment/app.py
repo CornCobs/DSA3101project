@@ -30,8 +30,8 @@ def load_data(nrows=None):
 
 data = load_data()
 panel_demo = pd.read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
-U = pd.read_csv("../models/U.csv")
-V = pd.read_csv("../models/V.csv")
+U = pd.read_csv("../models/U30.csv")
+V = pd.read_csv("../models/V30.csv")
 panels = U['Panel ID']
 products = V['Product']
 d = U.shape[1]
@@ -41,6 +41,9 @@ d = U.shape[1]
 #####################################################################################################################################
 
 panel_id = st.selectbox(label="Panel ID", options=sorted(data['Panel ID'].unique()), index=1)
+
+st.subheader(f"{panel_id}'s' Profile")
+st.table(panel_demo[panel_demo.ID == panel_id])
 
 UV = (U[U['Panel ID'] == panel_id].values[:, 1:] @ V.values[:, 1:].T).ravel()
 
@@ -57,8 +60,14 @@ st.text(f"Would you like to buy them again? :)")
 #####################################################################################################################################
 
 st.subheader(f"[Current Discounts/Promotions] HOT/FLASH DEALS")
-st.text(f"""Sort by stock inventory availability from most to least 
-and perishable goods to non perishable goods""")
+promos = data.Product.sample(5).reset_index(drop=True)
+st.table(promos)
+
+#####################################################################################################################################
+
+st.subheader(f"[Historical Views] Recently viewed")
+st.table(data.Product.sample(5).reset_index(drop=True))
+st.text(f"You have recently viewed these products. Would you like to purchase them :)")
 
 #####################################################################################################################################
 
@@ -71,12 +80,6 @@ trending.columns = ['Count']
 st.table(trending  \
     .sort_values(by=['Count'], ascending=[False]) \
     .head(k).reset_index())
-
-#####################################################################################################################################
-
-st.subheader(f"[Historical Views] Recently viewed")
-st.table(data.Product.sample(5).reset_index(drop=True))
-st.text(f"You have recently viewed these products. Would you like to purchase them :)")
 
 #####################################################################################################################################
 
