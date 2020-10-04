@@ -1,0 +1,51 @@
+---
+title: "DSA3101 Assignment 2 Category Grouping"
+output: html_document
+---
+
+# Clalories Clustering
+
+```{r}
+data <- read.csv("correct_data.csv") %>% select("Category", "Calories.100g") %>% unique()
+
+example <- select(data, -(Category))
+
+ex <- as.data.frame(t(example))
+colnames(ex) <- data$Category
+
+a <- as.matrix(dist(example))
+dist_mat <- a/2
+row.names(dist_mat) <- data$Category
+colnames(dist_mat) <- data$Category
+dist_mat <- as.matrix(dist_mat)
+hc <-hclust(as.dist(dist_mat[1:62,1:62]))
+
+plot(hc, cex = 0.5)
+
+rect.hclust(hc, k = 7, border = "red")
+
+labs <- as.data.frame(cutree(hc, k = 7))
+
+labs <- data.frame(Category = data$Category,labs = labs$`cutree(hc, k = 7)`)
+
+data <- left_join(data, labs, by = "Category")
+
+data <- group_by(data, labs) %>% mutate(mean_calories = mean(Calories.100g))
+
+
+a <- data.frame(mean_calories = as.numeric(unique(data$mean_calories))) %>% mutate(rank = rank(mean_calories))
+
+a$mean_calories <- as.character(a$mean_calories)
+
+data$mean_calories <- as.character(data$mean_calories)
+
+data_1 <- left_join(data, a, by = "mean_calories")
+
+data_1 <- select(data_1, Category, Calories.100g, rank)
+
+write.csv(data_1, "C:\\Users\\User\\Desktop\\NUS\\Year 3 Sem 1\\DSA3101\\Hackerthon\\Assignment 2\\Category_Label_Ver2.csv", row.names = FALSE)
+
+View(data_1)
+
+```
+
