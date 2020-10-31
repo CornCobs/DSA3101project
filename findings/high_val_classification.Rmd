@@ -1,0 +1,402 @@
+---
+title: "high_val_classification_unfiltered"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+```
+
+Want to discover features that allow us to predict whether a new customer will be a high-value customer.
+
+Or rather, our question is this:
+
+"Given the minimum amount of data about a customer, how can we identify potential high valued customers?"
+
+A practical application of this question is when the company receives NEW customers. At their first/second purchase, the company may not be able to easily obtain demographic information, and only have 1 or 2 sets of transaction data.
+
+We thus attempt to work with a limited dataset, with only the initial purchases of each panel, and attempt to predict subsequent purchase behavior.
+
+
+```{r}
+purchases <- read_csv("../cleaned_data/imputed_data.csv")
+data <- purchases %>% mutate(month_grp = floor(((date - min(date)) / 7)/4)) %>%
+  group_by(pid, month_grp) %>% summarise(month_spend = sum(spend), 
+                                         month_start = min(date))
+
+ggplot(data) + geom_point(aes(x=month_grp, y=month_spend))
+
+ggplot(data) + geom_boxplot(aes(x=month_grp, y=month_spend, group=month_grp)) +
+  xlab("Months from start of data") +
+  ylab("Monthly Spending")
+```
+
+
+Picture: "Distribution of monthly spending over 3 years.png"
+
+Can see that monthly spending has not really changed significantly over the 3 year period, so it is safe to set a fixed cut-off value for high-value customers
+
+```{r}
+quantile(data$month_spend)
+```
+
+Choose to set > 200 ringgit per month as our cutoff for high spending customers (~25% of customers)
+
+## Definitions
+
+We want to identify high valued customers. These customers would ideally have high spending, while also being consistent across a significant period of time.
+
+Our group decided to model this based on each panel's monthly total spending over a period of 1 year following their first recorded purchase. Within a monthly cycle, it does not matter whether the customer purchases weekly or biweekly (personal preference) as long as they have high total spending. However checking that they maintain this habit over a year filters out certain customers who spend a very large amount (e.g. > 1000 ringgit) in one month, then have no other purchases for the next few months. Inconsistent customers are hard to target with our strategies. Thus we define our target group with the following definitions:
+
+1. Initial purchase data is the purchase on the first date as recorded in our dataset
+2. A high value customer is one who maintains > 200 ringgit per month spending at least 8/12 times in the year (2 thirds of the year) following his/her initial purchase data
+
+The reason why we allow slackness in the condition is
+1. Requiring > 200 ringgit spending for all 12 months is too strict, very few customers meet the criteria, making it almost pointless to predict
+2. It is natural that customers may have dips in their spending over one year. Vacations, occasionally visiting other stores, may easily result in a dip < 200 ringgit but we still want to identify such customers without filtering them out
+3. For new customers, their spending may not hit the required amount in initial months but we are more interested in persistent behavior
+
+Note that first purchase data may not be the first purchase for all customers in the dataset as we do not have data prior to our 3-year period. This is not in conflict with our aim, which is to try to see if we can predict subsequent behavior based on a minimal subset of data, which is often the case for new customers.
+
+```{r}
+labelled3 <- data %>% group_by(pid) %>%
+  summarise(high_val = 
+              sum(month_grp - min(month_grp) < 12 & month_spend > 200) >= 8,
+            miss_count = n() - sum(month_grp - min(month_grp) < 12 & month_spend > 200))
+labelled3 %>% filter(high_val)
+```
+
+We can see that there are 420 high valued customers by our definitions, out of 4026 total panels. The group is a minority by design (top 25% monthly spenders consistently). Since the data is imbalanced, and we are focused on trying to identify these customers, we will be training our model on Recall, and using Precision to evaluate the cost of our strategies.
+
+We have to remove 110 customers whose join date is in the past year, and their data is insufficient to categorize as high value or not using our criteria.
+
+```{r}
+pred_customers <- data %>% group_by(pid) %>% 
+  summarise(pred = min(month_grp) > 27) %>% 
+  filter(pred) %>%
+  inner_join(labelled3) %>%
+  filter(!high_val, miss_count < 4)
+pred_customers
+```
+
+```{r}
+labelled_data <- labelled3 %>% filter(!(pid %in% pred_customers$pid) ) %>% select(-miss_count)
+```
+
+To reduce dimensions in our data, we have mapped the 62 categories into 20 groups of related products.
+
+```{r}
+mappings <- read_csv("../category_clusters.csv")
+mappings <- select(mappings, -X1)
+```
+
+
+```{r}
+grouped.purchases <- purchases %>% inner_join(mappings, by="cat")
+
+grouped.purchases <- select(labelled_data, pid, high_val) %>% 
+  inner_join(grouped.purchases, by="pid") %>%
+  group_by(pid, date, group) %>% 
+  summarise(high_val = first(high_val), tot_spend = sum(spend))
+
+grouped.purchases <- ungroup(grouped.purchases)
+```
+
+## Model Features
+
+For our model, we will try to obtain the best predictions (Recall/Precision) using the following combinations of data which may or may not be available:
+
+1. Spending on each category on first purchase
+2. Spending on each category on second purchase (if any)
+3. Demographic data
+
+```{r}
+first_purchase <- grouped.purchases %>% group_by(pid) %>% filter(date == min(date))
+
+second_purchase <- grouped.purchases %>% group_by(pid) %>% 
+  filter(date != min(date)) %>% filter(date == min(date))
+
+```
+
+```{r}
+first_purchase.spread <- first_purchase %>% ungroup() %>% group_by(pid) %>% spread(key="group", value="tot_spend", fill=0)
+```
+
+
+```{r}
+demo <- readxl::read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
+demo$BMI <- as.factor(demo$BMI)
+demo$Income <- factor(demo$Income, ordered=T, levels=c("Income < 1500", "Income 1500 - 1999", "Income 2000 - 2999", "Income 3000 - 3999", "Income 4000 - 4999", "Income >5000"))
+demo$Ethnicity <- as.factor(stringr::word(demo$Ethnicity, -1))
+demo$Lifestage <- as.factor(demo$Lifestage)
+demo$Strata <- as.factor(demo$Strata)
+demo$`#HH` <- as.factor(demo$`#HH`)
+demo$location <- as.factor(demo$location)
+```
+
+```{r}
+labelled_data <- inner_join(labelled_data, demo, by=c("pid"="ID"))
+labelled_data.ids <- labelled_data$pid
+labelled_data <- mutate(labelled_data,
+                        high_val=as.factor(if_else(high_val, "high", "low")))
+```
+
+We first perform a feature plot to check if any demographic features clearly distinguish the 2 groups. From feature plot below, it does not appear so. Groups are very homogeneous.
+
+Picture: "Feature Plot inclusive less than 3 months.png"
+
+We thus may not need to collect this data which makes our model much cheaper to implement!
+
+```{r}
+dm <- dummyVars(high_val ~ ., labelled_data)
+dm.features <- predict(dm, newdata=labelled_data)
+
+
+featurePlot(x = dm.features, 
+            y = labelled_data$high_val, 
+            plot = "box",
+            strip=strip.custom(par.strip.text=list(cex=.7)),
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")))
+```
+
+```{r}
+labelled_data$pid <- labelled_data.ids
+first.spread.demo <- inner_join(labelled_data, first_purchase.spread, by="pid") %>%
+  select(-high_val.y, -date, -pid) %>% rename(high_val=high_val.x)
+```
+
+We now first attempt to train a model varying the following:
+1. Include demographic info or not
+2. With 1st purchase only or with 2nd purchase as well or with 1st and 2nd combined info
+
+
+## 1. With demographic info
+
+```{r}
+set.seed(3456)
+trainIndex <- createDataPartition(first.spread.demo$high_val, p = .85, 
+                                  list = FALSE, 
+                                  times = 1)
+
+train <- first.spread.demo[trainIndex,]
+test <- first.spread.demo[-trainIndex, ]
+```
+
+```{r}
+fitControl <- trainControl(method="repeatedcv", 
+                           number=10, repeats=10,
+                           summaryFunction = prSummary)
+
+set.seed(800)
+
+fit.gbm.first.demo.nosample <- caret::train(high_val ~ ., 
+                 data=train,
+                 method="gbm",
+                 trControl=fitControl,
+                 verbose=F,
+                 metric="Recall"
+                 )
+
+fit.gbm.first.demo.nosample
+```
+
+```{r}
+varImp(fit.gbm.first.demo.nosample)
+predictors(fit.gbm.first.demo.nosample)
+```
+
+Now with upsampling to balance the data and increase predictive power for high.
+
+```{r}
+fitControl <- trainControl(method="repeatedcv", 
+                           number=10, repeats=10,
+                           summaryFunction = prSummary,
+                           sampling="up")
+set.seed(800)
+
+fit.gbm.first.demo.sample <- caret::train(high_val ~ ., 
+                 data=train,
+                 method="gbm",
+                 trControl=fitControl,
+                 verbose=F,
+                 metric="Recall"
+                 )
+```
+
+It appears to generalize pretty well! Precision is ~25% and recal > 50% on unseen data!
+
+```{r}
+confusionMatrix(data=predict(fit.gbm.first.demo.sample, newdata=test),
+                reference=test$high_val)
+varImp(fit.gbm.first.demo.sample)
+predictors(gbmFit2)
+```
+
+Confusion Matrix and Statistics
+
+          Reference
+Prediction high low
+      high   33  98
+      low    30 307
+                                          
+               Accuracy : 0.7265          
+                 95% CI : (0.6837, 0.7664)
+    No Information Rate : 0.8654          
+    P-Value [Acc > NIR] : 1               
+                                          
+                  Kappa : 0.1936          
+                                          
+ Mcnemar's Test P-Value : 3.18e-09        
+                                          
+            Sensitivity : 0.52381         
+            Specificity : 0.75802         
+         Pos Pred Value : 0.25191         
+         Neg Pred Value : 0.91098         
+             Prevalence : 0.13462         
+         Detection Rate : 0.07051         
+   Detection Prevalence : 0.27991         
+      Balanced Accuracy : 0.64092         
+                                          
+       'Positive' Class : high 
+
+```{r}
+fit.gbm.first.nodemo.sample <- caret::train(high_val ~ .,
+                       data=select(train, !(BMI:location)),
+                       method="gbm",
+                       trControl=fitControl,
+                       verbose=F,
+                       metric="Recall")
+```
+
+```{r}
+confusionMatrix(data=predict(fit.gbm.first.nodemo.sample, 
+                             newdata=select(test, !(BMI:location))),
+                reference=test$high_val)
+varImp(fit.gbm.first.demo.sample)
+```
+
+Confusion Matrix and Statistics
+
+          Reference
+Prediction high low
+      high   39 109
+      low    24 296
+                                          
+               Accuracy : 0.7158          
+                 95% CI : (0.6726, 0.7563)
+    No Information Rate : 0.8654          
+    P-Value [Acc > NIR] : 1               
+                                          
+                  Kappa : 0.2229          
+                                          
+ Mcnemar's Test P-Value : 3.247e-13
+ 
+            Sensitivity : 0.61905         
+            Specificity : 0.73086         
+         Pos Pred Value : 0.26351         
+         Neg Pred Value : 0.92500         
+             Prevalence : 0.13462         
+         Detection Rate : 0.08333         
+   Detection Prevalence : 0.31624         
+      Balanced Accuracy : 0.67496         
+                                          
+       'Positive' Class : high 
+       
+In fact we can maintain the same performance without having to collect demographic data
+
+## Addition of Second Purchase
+
+If we allow for a little more information, with the 2nd basket as well, can we increase predictive power? In this analysis it makes sense to filter customers with no second purchase (32 of them) since in the real application of our model, it would never be applied to these customers who have not even made 2nd purchase.
+
+```{r}
+second_purchase.spread <- second_purchase %>% ungroup() %>% group_by(pid) %>% spread(key="group", value="tot_spend", fill=0) %>% select(-high_val)
+
+both_purchase.spread <- first_purchase.spread %>% 
+  inner_join(second_purchase.spread, by="pid", suffix=c(".first", ".second")) %>%
+  mutate(time_between = date.second - date.first,
+         high_val = factor(if_else(high_val, "high", "low"), levels=c("high", "low"))) %>% 
+  select(-date.second, -date.first) %>% ungroup()
+  
+```
+
+
+```{r}
+set.seed(3456)
+trainIndex <- createDataPartition(both_purchase.spread$high_val, p = .85, 
+                                  list = FALSE, 
+                                  times = 1)
+
+train <- both_purchase.spread[trainIndex,]
+test <- both_purchase.spread[-trainIndex, ]
+```
+
+```{r}
+fitControl <- trainControl(method="repeatedcv", 
+                           number=10, repeats=10,
+                           summaryFunction = prSummary,
+                           savePredictions = T,
+                           sampling="up")
+set.seed(800)
+
+fit.gbm.both.nodemo.sample2 <- caret::train(high_val ~ ., 
+                 data=select(train, -pid),
+                 method="gbm",
+                 trControl=fitControl,
+                 verbose=F,
+                 metric="Recall"
+                 )
+alarm()
+```
+
+```{r}
+confusionMatrix(data=predict(fit.gbm.both.nodemo.sample, 
+                             newdata=test),
+                reference=test$high_val,
+                mode="prec_recall")
+test_results <- data.frame(pred = predict(fit.gbm.both.nodemo.sample, newdata=test),
+                           obs=test$high_val)
+test_results <- cbind(test_results, 
+                      predict(fit.gbm.both.nodemo.sample, newdata=test, type="prob"))
+
+twoClassSummary(test_results,
+                lev=levels(test$high_val))
+
+varImp(fit.gbm.first.demo.sample)
+```
+
+We see a clear marked improvement of precision and recall
+
+ interaction.depth  n.trees  AUC  Precision  Recall     F        
+ 3                   50      NaN  0.3072057  0.6447222  0.4154131
+ 
+Confusion Matrix and Statistics
+
+          Reference
+Prediction high low
+      high   42  77
+      low    21 324
+                                          
+               Accuracy : 0.7888          
+                 95% CI : (0.7488, 0.8251)
+    No Information Rate : 0.8642          
+    P-Value [Acc > NIR] : 1               
+                                          
+                  Kappa : 0.3453          
+                                          
+ Mcnemar's Test P-Value : 2.763e-08       
+                                          
+              Precision : 0.35294         
+                 Recall : 0.66667         
+                     F1 : 0.46154         
+             Prevalence : 0.13578         
+         Detection Rate : 0.09052         
+   Detection Prevalence : 0.25647         
+      Balanced Accuracy : 0.73732         
+                                          
+       'Positive' Class : high  
+ 
