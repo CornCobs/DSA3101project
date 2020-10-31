@@ -1,0 +1,178 @@
+---
+title: "Predicting_high_val_pt2_27_Oct"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set
+library(tidyverse)
+labelled_data <- read_csv("../cleaned_data/high_val_labels.csv")
+pred_data <- read_csv("../cleaned_data/pred_high_val_labels.csv")
+```
+
+# Creating features
+
+```{r}
+first_purchase <- labelled_data %>% 
+  filter(!(pid %in% pred_data$pid)) %>%
+  inner_join(purchases, by=c("pid"="pid", "first_purchase_date"="date")) %>% 
+  group_by(pid, cat) %>%
+  summarise(high_val = first(high_val), tot_spend = sum(spend))
+
+first_purchase <- first_purchase %>% ungroup() %>% spread(cat, tot_spend, fill=0)
+```
+```{r}
+demo <- readxl::read_excel("../data/DSA3101_Hackathon_Panelists_Demographics.xlsx")
+demo$BMI <- as.factor(demo$BMI)
+demo$Income <- as.factor(demo$Income)
+demo$Ethnicity <- as.factor(demo$Ethnicity)
+demo$Lifestage <- as.factor(demo$Lifestage)
+demo$Strata <- as.factor(demo$Strata)
+demo$`#HH` <- as.factor(demo$`#HH`)
+demo$location <- as.factor(demo$location)
+```
+
+```{r}
+data <- inner_join(demo, first_purchase, by=c("ID"="pid"))
+```
+
+```{r}
+x <- data %>% select(-ID, -high_val)
+y <- data %>% select(ID, high_val) %>% 
+  mutate(class = as.factor(if_else(high_val, "high", "low")))
+```
+
+```{r}
+test_ix <- c(sample(which(y$high_val), 13),
+             sample(which(!y$high_val), 150))
+y_test <- y[test_ix,]
+y_train <- y[-test_ix,]
+x_test <- x[test_ix,]
+x_train <- x[-test_ix,]
+```
+
+```{r}
+write.csv(x, "../cleaned_data/features.csv", row.names=F)
+write.csv(y, "../cleaned_data/labels.csv", row.names=F)
+```
+
+Bad attempt at naive random forest model (very imbalanced prediction)
+
+```{r}
+library(randomForest)
+
+forest <- randomForest(x=x_train,
+                       y=y_train$class,
+                       xtest=x_test,
+                       ytest=y_test$class,
+                       importance = T,
+                       do.trace = T)
+```
+
+
+```{r}
+inc <- data$Income 
+data$Income <- factor(inc, ordered=T, levels=c("Income < 1500", "Income 1500 - 1999", "Income 2000 - 2999", "Income 3000 - 3999", "Income 4000 - 4999", "Income >5000"))
+
+eth <- data$Ethnicity
+data$Ethnicity <- as.factor(stringr::word(eth, -1))
+```
+
+
+```{r}
+library(caret)
+
+set.seed(999)
+
+training <- data %>% select(-ID) %>% 
+  mutate(class = as.factor(if_else(high_val, "high", "low")))
+
+train_test <- createDataPartition(training$class, p=0.85, list=F)
+training$BMI <- droplevels(training$BMI)
+train_data <- training[train_test,]
+test_data <- training[-train_test,]
+```
+```{r}
+fitControl <- trainControl(method="repeatedcv", 
+                           number=10, repeats=10,
+                           summaryFunction = prSummary)
+```
+
+```{r}
+set.seed(800)
+
+gbmFit1 <- train(class ~ ., 
+                 data=select(training, -high_val),
+                 method="gbm",
+                 trControl=fitControl,
+                 verbose=F,
+                 metric="Precision"
+                 )
+```
+
+```{r}
+gbmFit2 <- train(class ~ ., 
+                 data=select(train_data, -high_val),
+                 method="gbm",
+                 trControl=fitControl,
+                 verbose=F,
+                 metric="Recall"
+                 )
+```
+
+```{r}
+confusionMatrix(data=predict(gbmFit2, newdata=select(training, -high_val)), reference=training$class)
+varImp(gbmFit2)
+predictors(gbmFit2)
+```
+
+
+```{r}
+fitControlSampling <- trainControl(method="repeatedcv", 
+                           number=10, repeats=10,
+                           summaryFunction = prSummary,
+                           sampling = "up")
+```
+
+```{r}
+set.seed(800)
+
+gbmFit3 <- train(class ~ ., 
+                 data=select(train_data, -high_val),
+                 method="gbm",
+                 trControl=fitControlSampling,
+                 verbose=F,
+                 metric="Recall"
+                 )
+```
+
+
+```{r}
+confusionMatrix(data=predict(gbmFit3, newdata=select(test_data, -high_val)), reference=test_data$class)
+varImp(gbmFit2)
+predictors(gbmFit2)
+```
+
+
+# Attempt with GLMNET
+
+```{r}
+library(glmnet)
+
+inc <- data$Income 
+data$Income <- factor(inc, ordered=T, levels=c("Income < 1500", "Income 1500 - 1999", "Income 2000 - 2999", "Income 3000 - 3999", "Income 4000 - 4999", "Income >5000"))
+
+eth <- data$Ethnicity
+data$Ethnicity <- as.factor(stringr::word(eth, -1))
+
+xfactors <- model.matrix(class ~ BMI + Income + Ethnicity + Lifestage + Strata + `#HH` + location, data = cbind(y['class'], data[2:8]))
+
+x <- as.matrix(data.frame(xfactors[, -1], data[10:69]))
+
+weights <- 1 / (table(y$class)[y$class] / length(y$class))
+
+glmmod <- glmnet(x = x, y = y$class, family='binomial', weights=as.vector(weights))
+cvglmmod <- cv.glmnet(x=x, y=y$class, family="binomial", weights=as.vector(weights))
+```
