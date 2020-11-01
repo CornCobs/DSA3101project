@@ -1,0 +1,141 @@
+---
+title: "high freq"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+```
+
+
+```{r}
+purchases <- read_csv("../cleaned_data/imputed_data.csv")
+data <- purchases %>% mutate(month_grp = floor(((date - min(date)) / 7)/4)) %>%
+  group_by(pid, month_grp) %>% summarise(freq = length(unique(date)))
+
+ggplot(data) + geom_point(aes(x=month_grp, y=month_spend))
+
+ggplot(data) + geom_boxplot(aes(x=month_grp, y=month_spend, group=month_grp)) +
+  xlab("Months from start of data") +
+  ylab("Monthly Spending")
+```
+
+
+
+```{r}
+quantile(data$freq)
+```
+
+
+```{r}
+labelled3 <- data %>% group_by(pid) %>%
+  summarise(high_freq = 
+              sum(month_grp - min(month_grp) < 12 & freq > 2) >= 10,
+            miss_count = n() - sum(month_grp - min(month_grp) < 12 & freq > 2))
+labelled3 %>% filter(high_freq)
+```
+
+
+```{r}
+pred_customers <- data %>% group_by(pid) %>% 
+  summarise(pred = min(month_grp) > 27) %>% 
+  filter(pred) %>%
+  inner_join(labelled3) %>%
+  filter(!high_freq, miss_count < 4)
+pred_customers
+```
+
+```{r}
+labelled_data <- labelled3 %>% filter(!(pid %in% pred_customers$pid) ) %>% select(-miss_count)
+```
+
+To reduce dimensions in our data, we have mapped the 62 categories into 20 groups of related products.
+
+```{r}
+mappings <- read_csv("../category_clusters.csv")
+mappings <- select(mappings, -X1)
+```
+
+
+```{r}
+grouped.purchases <- purchases %>% inner_join(mappings, by="cat")
+
+grouped.purchases <- select(labelled_data, pid, high_freq) %>% 
+  inner_join(grouped.purchases, by="pid") %>%
+  group_by(pid, date, group) %>% 
+  summarise(high_val = first(high_val), tot_spend = sum(spend))
+
+grouped.purchases <- ungroup(grouped.purchases)
+```
+
+## Model Features
+
+For our model, we will try to obtain the best predictions (Recall/Precision) using the following combinations of data which may or may not be available:
+
+1. Spending on each category on first purchase
+2. Spending on each category on second purchase (if any)
+3. Demographic data
+
+```{r}
+first_purchase <- grouped.purchases %>% group_by(pid) %>% filter(date == min(date))
+
+second_purchase <- grouped.purchases %>% group_by(pid) %>% 
+  filter(date != min(date)) %>% filter(date == min(date))
+
+```
+
+```{r}
+first_purchase.spread <- first_purchase %>% ungroup() %>% group_by(pid) %>% spread(key="group", value="tot_spend", fill=0)
+```
+
+
+```{r}
+second_purchase.spread <- second_purchase %>% ungroup() %>% group_by(pid) %>% spread(key="group", value="tot_spend", fill=0) %>% select(-high_freq)
+
+both_purchase.spread <- first_purchase.spread %>% 
+  inner_join(second_purchase.spread, by="pid", suffix=c(".first", ".second")) %>%
+  mutate(time_between = date.second - date.first,
+         high_val = factor(if_else(high_val, "high", "low"), levels=c("low", "high"))) %>% 
+  select(-date.second, -date.first) %>% ungroup()
+  
+```
+
+
+```{r}
+set.seed(3456)
+trainIndex <- createDataPartition(both_purchase.spread$high_freq, p = .85, 
+                                  list = FALSE, 
+                                  times = 1)
+
+train <- both_purchase.spread[trainIndex,]
+test <- both_purchase.spread[-trainIndex, ]
+```
+
+```{r}
+fitControl <- trainControl(method="repeatedcv", 
+                           number=10, repeats=10,
+                           summaryFunction = prSummary,
+                           savePredictions = T)
+set.seed(800)
+
+fit.gbm.both.nodemo.sample2 <- caret::train(high_freq ~ ., 
+                 data=select(train, -pid),
+                 method="gbm",
+                 trControl=fitControl,
+                 verbose=F,
+                 metric="Recall"
+                 )
+
+```
+
+```{r}
+confusionMatrix(data=predict(fit.gbm.both.nodemo.sample2, 
+                             newdata=test),
+                reference=test$high_freq,
+                mode="prec_recall")
+```
+
